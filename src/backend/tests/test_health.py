@@ -18,15 +18,21 @@ def test_health_reports_schema_version(tmp_path):
 
 def test_data_survives_app_recreation(tmp_path):
     settings = make_settings(tmp_path)
-    with TestClient(create_app(settings)):
+
+    def users():
         conn = db.connect(settings.db_path)
-        conn.execute("INSERT INTO users (username, password_hash) VALUES ('owner', 'x')")
-        conn.commit()
-        conn.close()
+        try:
+            return [tuple(r) for r in conn.execute("SELECT username, password_hash FROM users")]
+        finally:
+            conn.close()
+
     with TestClient(create_app(settings)):
-        conn = db.connect(settings.db_path)
-        assert conn.execute("SELECT username FROM users").fetchone()["username"] == "owner"
-        conn.close()
+        first = users()
+    with TestClient(create_app(settings)):
+        second = users()
+    # The bootstrap owner is created once; a restart must neither duplicate nor re-key it.
+    assert len(first) == 1
+    assert second == first
 
 
 def test_health_returns_503_when_database_is_unavailable(tmp_path):
