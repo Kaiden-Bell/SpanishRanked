@@ -4,7 +4,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path

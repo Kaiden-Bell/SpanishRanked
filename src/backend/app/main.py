@@ -8,7 +8,6 @@ from fastapi.staticfiles import StaticFiles
 from . import db
 from .config import Settings
 
-
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
 
@@ -35,6 +34,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
 
     return app
-
 
 app = create_app()

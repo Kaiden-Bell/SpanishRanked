@@ -1,4 +1,6 @@
-"""SQLite access and schema migrations (MVP_DESIGN.md §6).
+"""
+
+SQLite schema + migrations
 
 Timestamps are UTC TEXT. Enum-like columns carry CHECK constraints in addition
 to application validation. Foreign keys are enabled on every connection.
@@ -107,10 +109,8 @@ def connect(path: Path | str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
-
 def schema_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
-
 
 def migrate(conn: sqlite3.Connection) -> int:
     """Apply pending migrations, each in its own transaction. Returns the schema version."""
