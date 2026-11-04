@@ -1,0 +1,12 @@
+services:
+  languageai:
+    build: .
+    ports:
+      # Localhost only; widen deliberately (MVP_DESIGN.md §10).
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - languageai-data:/data
+    restart: unless-stopped
+
+volumes:
+  languageai-data:

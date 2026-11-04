@@ -1,0 +1,9 @@
+.git
+.venv
+.env
+data
+eval
+docs
+**/node_modules
+**/dist
+**/__pycache__
