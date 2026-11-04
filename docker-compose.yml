@@ -5,6 +5,9 @@ services:
       # Localhost only; widen deliberately (MVP_DESIGN.md §10).
       - "${LANGUAGEAI_BIND_ADDR:-127.0.0.1}:8000:8000"
 
+    environment:
+      # Where a "day" ends for streaks and daily XP caps; set once in .env (IANA name, e.g. America/Chicago).
+      LANGUAGEAI_TIMEZONE: ${LANGUAGEAI_TIMEZONE:-UTC}
     volumes:
       - languageai-data:/data
     restart: unless-stopped
