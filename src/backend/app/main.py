@@ -5,9 +5,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db
+from . import db, progression
 from .config import Settings
 from .routes_auth import announce_bootstrap, bootstrap_owner, router as auth_router
+from .routes_progress import router as progress_router
 from .routes_sessions import router as sessions_router
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,6 +20,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with closing(db.connect(settings.db_path)) as conn:
             db.migrate(conn)
             bootstrap_password = bootstrap_owner(conn)
+            # Sessions saved before XP existed (or by an interrupted run) get their awards here.
+            progression.award_missing_sessions(conn, settings.tz)
         if bootstrap_password:
             announce_bootstrap(bootstrap_password)
         yield
@@ -28,6 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(sessions_router)
+    app.include_router(progress_router)
 
     @app.get("/api/health")
     def health():

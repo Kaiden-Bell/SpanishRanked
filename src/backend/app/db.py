@@ -113,8 +113,16 @@ CREATE TABLE auth_sessions (
 CREATE INDEX idx_study_sessions_user ON study_sessions (user_id, id DESC);
 """
 
+# The local calendar day an award counted toward (in the configured timezone at the time), so
+# streaks and daily caps never shift if the timezone setting changes later. No XP was awarded
+# before this migration, so the '' default only exists to satisfy NOT NULL.
+SCHEMA_V3 = """
+ALTER TABLE xp_events ADD COLUMN local_date TEXT NOT NULL DEFAULT '';
+CREATE INDEX idx_xp_events_user_day ON xp_events (user_id, local_date);
+"""
+
 # Append new migrations; never edit one that has shipped. user_version is the count applied.
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2]
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3]
 
 
 def utc_timestamp(moment: datetime | None = None) -> str:

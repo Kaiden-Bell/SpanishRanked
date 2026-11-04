@@ -74,3 +74,40 @@ class StudySessionOut(BaseModel):
 class StudySessionPage(BaseModel):
     total: int
     items: list[StudySessionOut]
+
+
+class AwardOut(BaseModel):
+    base_xp: int
+    multiplier: float
+    awarded_xp: int
+    capped: bool
+
+
+class StudySessionCreated(StudySessionOut):
+    award: AwardOut
+
+
+class RankOut(BaseModel):
+    name: str
+    min_xp: int
+
+
+class StreakOut(BaseModel):
+    current: int
+    active_today: bool
+    next_multiplier: float
+
+
+class TodayOut(BaseModel):
+    date: str
+    study_xp: int
+    study_xp_cap: int
+
+
+class ProgressOut(BaseModel):
+    total_xp: int
+    rank: RankOut
+    next_rank: RankOut | None
+    xp_to_next: int | None
+    streak: StreakOut
+    today: TodayOut

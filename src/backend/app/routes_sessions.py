@@ -1,10 +1,11 @@
 import sqlite3
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from . import db
+from . import db, progression
 from .deps import CurrentUser, get_db, ready_user
-from .schemas import StudySessionIn, StudySessionOut, StudySessionPage, normalize_token
+from .schemas import AwardOut, StudySessionCreated, StudySessionIn, StudySessionOut, StudySessionPage, normalize_token
 
 router = APIRouter(prefix="/api/study-sessions", tags=["study-sessions"])
 
@@ -36,18 +37,20 @@ _COLUMNS = (
 )
 
 
-@router.post("", status_code=201, response_model=StudySessionOut)
+@router.post("", status_code=201, response_model=StudySessionCreated)
 def create_study_session(
-    body: StudySessionIn, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)
+    body: StudySessionIn, request: Request, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)
 ):
-    # One transaction: the session, its terms/concepts and its sentences are saved together or not at all.
+    now = datetime.now(timezone.utc)
+    # One transaction: the session, its terms/concepts, its sentences and its XP award are saved
+    # together or not at all.
     with conn:
         session_id = conn.execute(
             "INSERT INTO study_sessions (user_id, language_code, mode, activity_type, duration_minutes,"
             " context_text, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 user.id, body.language_code, body.mode, body.activity_type,
-                body.duration_minutes, body.context_text, db.utc_timestamp(),
+                body.duration_minutes, body.context_text, db.utc_timestamp(now),
             ),
         ).lastrowid
         for term in body.terms:
@@ -68,8 +71,13 @@ def create_study_session(
                 "INSERT INTO study_sentences (study_session_id, sentence_text) VALUES (?, ?)",
                 (session_id, sentence),
             )
+        award = progression.award_xp(
+            conn, user.id, "STUDY_SESSION", session_id,
+            progression.session_base_xp(body.duration_minutes), now, request.app.state.settings.tz,
+        )
     row = conn.execute(f"SELECT {_COLUMNS} FROM study_sessions WHERE id = ?", (session_id,)).fetchone()
-    return _hydrate(conn, [row])[0]
+    created = _hydrate(conn, [row])[0]
+    return StudySessionCreated(**created.model_dump(), award=AwardOut(**vars(award)))
 
 
 @router.get("", response_model=StudySessionPage)
