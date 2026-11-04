@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react'
-import { ACTIVITY_TYPES, api, ApiError, type StudySession } from './api'
+import { ACTIVITY_TYPES, api, ApiError, type Award, type StudySession } from './api'
 
 const MAX_TERMS = 5
 const MAX_SENTENCES = 3
 
 const label = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 
-export default function NewSession({ onSaved }: { onSaved: () => void }) {
+export default function NewSession({ onSaved }: { onSaved: (award: Award) => void }) {
   const [mode, setMode] = useState<StudySession['mode']>('SELF_STUDY')
   const [activity, setActivity] = useState<string>('READING')
   const [minutes, setMinutes] = useState('20')
@@ -32,7 +32,7 @@ export default function NewSession({ onSaved }: { onSaved: () => void }) {
     setBusy(true)
     setErrors([])
     try {
-      await api.createSession({
+      const saved = await api.createSession({
         mode,
         activity_type: activity,
         duration_minutes: Number(minutes),
@@ -40,7 +40,7 @@ export default function NewSession({ onSaved }: { onSaved: () => void }) {
         terms: cleanTerms,
         sentences: cleanSentences,
       })
-      onSaved()
+      onSaved(saved.award)
     } catch (err) {
       setErrors(err instanceof ApiError ? err.messages : ['Something went wrong.'])
       setBusy(false)

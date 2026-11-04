@@ -13,6 +13,17 @@ export type StudySession = {
   completed_at: string | null
 }
 
+export type Award = { base_xp: number; multiplier: number; awarded_xp: number; capped: boolean }
+
+export type Progress = {
+  total_xp: number
+  rank: { name: string; min_xp: number }
+  next_rank: { name: string; min_xp: number } | null
+  xp_to_next: number | null
+  streak: { current: number; active_today: boolean; next_multiplier: number }
+  today: { date: string; study_xp: number; study_xp_cap: number }
+}
+
 export type StudySessionInput = {
   mode: StudySession['mode']
   activity_type: string
@@ -101,7 +112,8 @@ export const api = {
   changePassword: (current_password: string, new_password: string) =>
     request<User>('POST', '/api/auth/change-password', { current_password, new_password }),
   createSession: (input: StudySessionInput) =>
-    request<StudySession>('POST', '/api/study-sessions', input),
+    request<StudySession & { award: Award }>('POST', '/api/study-sessions', input),
+  progress: (signal?: AbortSignal) => request<Progress>('GET', '/api/progress', undefined, signal),
   listSessions: (offset: number, limit = 20, signal?: AbortSignal) =>
     request<{ total: number; items: StudySession[] }>(
       'GET',

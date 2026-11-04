@@ -7,7 +7,7 @@ function when(iso: string) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export default function History({ notice, onStart }: { notice?: string; onStart: () => void }) {
+export default function History({ onStart }: { onStart: () => void }) {
   const [items, setItems] = useState<StudySession[]>([])
   const [total, setTotal] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +41,6 @@ export default function History({ notice, onStart }: { notice?: string; onStart:
 
   return (
     <section>
-      {notice && <p className="good" role="status">{notice}</p>}
       <h2>History</h2>
       {error && <p className="bad" role="alert">{error}</p>}
       {total === null && !error && <p>Loading…</p>}
