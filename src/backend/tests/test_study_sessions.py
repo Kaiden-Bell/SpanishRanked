@@ -29,6 +29,7 @@ def test_valid_session_is_saved_and_returned(authed, raw_db):
     assert body["mode"] == "GUIDED_STUDY" and body["language_code"] == "es"
     assert body["terms"] == VALID["terms"] and body["sentences"] == VALID["sentences"]
     assert body["completed_at"] and body["created_at"]
+    assert body.pop("award")
     assert authed.get(f"/api/study-sessions/{body['id']}").json() == body
     assert raw_db.execute("SELECT COUNT(*) FROM study_terms").fetchone()[0] == 3
 
@@ -72,6 +73,7 @@ def test_invalid_input_is_rejected_and_nothing_is_saved(authed, raw_db, override
     assert authed.post("/api/study-sessions", json=payload(**overrides)).status_code == 422
     for table in ("study_sessions", "study_terms", "study_sentences", "concepts"):
         assert raw_db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+    assert raw_db.execute("SELECT COUNT(*) FROM xp_events").fetchone()[0] == 0
 
 
 def test_missing_fields_are_rejected(authed):
@@ -95,6 +97,7 @@ def test_a_failure_midway_saves_nothing(settings, authed, raw_db, monkeypatch):
         assert c.post("/api/study-sessions", json=payload()).status_code == 500
     assert raw_db.execute("SELECT COUNT(*) FROM study_sessions").fetchone()[0] == 0
     assert raw_db.execute("SELECT COUNT(*) FROM concepts").fetchone()[0] == 0
+    assert raw_db.execute("SELECT COUNT(*) FROM xp_events").fetchone()[0] == 0
 
 
 def test_history_is_newest_first_with_stored_inputs(authed):
