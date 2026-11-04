@@ -7,6 +7,7 @@ to application validation. Foreign keys are enabled on every connection.
 """
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 _TS_DEFAULT = "DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
@@ -99,12 +100,30 @@ CREATE TABLE xp_events (
 );
 """
 
+SCHEMA_V2 = f"""
+CREATE TABLE auth_sessions (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    csrf_token TEXT NOT NULL,
+    created_at TEXT NOT NULL {_TS_DEFAULT},
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_study_sessions_user ON study_sessions (user_id, id DESC);
+"""
+
 # Append new migrations; never edit one that has shipped. user_version is the count applied.
-MIGRATIONS = [SCHEMA_V1]
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2]
 
 
-def connect(path: Path | str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+def utc_timestamp(moment: datetime | None = None) -> str:
+    """UTC timestamp in the same format as the column defaults (sorts lexicographically)."""
+    return (moment or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def connect(path: Path | str, *, check_same_thread: bool = True) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

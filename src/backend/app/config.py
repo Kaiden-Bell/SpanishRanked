@@ -8,6 +8,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 class Settings:
     data_dir: Path
     frontend_dist: Path
+    # Set LANGUAGEAI_SECURE_COOKIES=1 when served over HTTPS (MVP_DESIGN.md §10).
+    secure_cookies: bool = False
+    session_ttl_hours: int = 24 * 7
 
     @property
     def db_path(self) -> Path:
@@ -23,4 +26,6 @@ class Settings:
                     REPO_ROOT / "src/frontend/spanish-ranked/dist",
                 )
             ),
+            secure_cookies=os.environ.get("LANGUAGEAI_SECURE_COOKIES", "") in ("1", "true"),
+            session_ttl_hours=int(os.environ.get("LANGUAGEAI_SESSION_TTL_HOURS", 24 * 7)),
         )
