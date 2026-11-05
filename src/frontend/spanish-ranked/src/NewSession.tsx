@@ -6,6 +6,11 @@ const MAX_SENTENCES = 3
 
 const label = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 
+const MODES: { value: StudySession['mode']; label: string }[] = [
+  { value: 'SELF_STUDY', label: 'Self-study' },
+  { value: 'GUIDED_STUDY', label: 'Guided study' },
+]
+
 export default function NewSession({ onSaved }: { onSaved: (award: Award) => void }) {
   const [mode, setMode] = useState<StudySession['mode']>('SELF_STUDY')
   const [activity, setActivity] = useState<string>('READING')
@@ -48,59 +53,70 @@ export default function NewSession({ onSaved }: { onSaved: (award: Award) => voi
   }
 
   return (
-    <form className="card form" onSubmit={submit}>
-      <h2>Log a study session</h2>
+    <>
+      <header className="page-head">
+        <h1>Log a study session</h1>
+        <p className="lede">Record what you studied, the words you picked up, and a few sentences of your own.</p>
+      </header>
 
-      <div className="row">
-        <label>
-          Mode
-          <select value={mode} onChange={(e) => setMode(e.target.value as StudySession['mode'])}>
-            <option value="SELF_STUDY">Self-study</option>
-            <option value="GUIDED_STUDY">Guided study</option>
-          </select>
-        </label>
-        <label>
-          Activity
-          <select value={activity} onChange={(e) => setActivity(e.target.value)}>
-            {ACTIVITY_TYPES.map((a) => (
-              <option key={a} value={a}>{label(a)}</option>
+      <form className="form" onSubmit={submit}>
+        <div className="field">
+          <span id="mode-label">Mode</span>
+          <div className="seg" role="group" aria-labelledby="mode-label">
+            {MODES.map((m) => (
+              <button type="button" key={m.value} aria-pressed={mode === m.value} onClick={() => setMode(m.value)}>
+                {m.label}
+              </button>
             ))}
-          </select>
+          </div>
+        </div>
+
+        <div className="row2">
+          <label className="field">
+            <span>Activity</span>
+            <select value={activity} onChange={(e) => setActivity(e.target.value)}>
+              {ACTIVITY_TYPES.map((a) => (
+                <option key={a} value={a}>{label(a)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Minutes</span>
+            <input type="number" min={1} max={1440} step={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} required />
+          </label>
+        </div>
+
+        <label className="field">
+          <span>What did you study?</span>
+          <textarea value={context} onChange={(e) => setContext(e.target.value)} maxLength={2000} rows={3} required
+            placeholder="e.g. Read a news article about travel" />
         </label>
-        <label>
-          Minutes
-          <input type="number" min={1} max={1440} step={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} required />
-        </label>
-      </div>
 
-      <label>
-        What did you study?
-        <textarea value={context} onChange={(e) => setContext(e.target.value)} maxLength={2000} rows={3} required
-          placeholder="e.g. Read a news article about travel" />
-      </label>
+        <fieldset className="group">
+          <legend>Words or phrases you learned (3–5)</legend>
+          {terms.map((t, i) => (
+            <input key={i} value={t} maxLength={100} aria-label={`Word or phrase ${i + 1}`}
+              onChange={(e) => setAt(terms, setTerms, i, e.target.value)} />
+          ))}
+        </fieldset>
 
-      <fieldset>
-        <legend>Words or phrases you learned (3–5)</legend>
-        {terms.map((t, i) => (
-          <input key={i} value={t} maxLength={100} aria-label={`Word or phrase ${i + 1}`}
-            onChange={(e) => setAt(terms, setTerms, i, e.target.value)} />
-        ))}
-      </fieldset>
+        <fieldset className="group">
+          <legend>Your own sentences in Spanish (2–3)</legend>
+          {sentences.map((s, i) => (
+            <input key={i} value={s} maxLength={300} aria-label={`Sentence ${i + 1}`}
+              onChange={(e) => setAt(sentences, setSentences, i, e.target.value)} />
+          ))}
+        </fieldset>
 
-      <fieldset>
-        <legend>Your own sentences in Spanish (2–3)</legend>
-        {sentences.map((s, i) => (
-          <input key={i} value={s} maxLength={300} aria-label={`Sentence ${i + 1}`}
-            onChange={(e) => setAt(sentences, setSentences, i, e.target.value)} />
-        ))}
-      </fieldset>
-
-      {errors.length > 0 && (
-        <ul className="bad errors" role="alert">
-          {errors.map((m) => <li key={m}>{m}</li>)}
-        </ul>
-      )}
-      <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save session'}</button>
-    </form>
+        {errors.length > 0 && (
+          <ul className="error" role="alert">
+            {errors.map((m) => <li key={m}>{m}</li>)}
+          </ul>
+        )}
+        <div className="actions">
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save session'}</button>
+        </div>
+      </form>
+    </>
   )
 }

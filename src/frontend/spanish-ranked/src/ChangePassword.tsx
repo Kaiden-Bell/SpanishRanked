@@ -22,23 +22,25 @@ export default function ChangePassword({ onChanged }: { onChanged: (user: User) 
   }
 
   return (
-    <form className="card form" onSubmit={submit}>
-      <h2>Choose a new password</h2>
+    <form className="panel form signin" onSubmit={submit}>
+      <h1>Choose a new password</h1>
       <p className="hint">Replace the one-time password before you continue. Use at least 12 characters.</p>
-      <label>
-        Current (one-time) password
+      <label className="field">
+        <span>Current (one-time) password</span>
         <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
       </label>
-      <label>
-        New password
+      <label className="field">
+        <span>New password</span>
         <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={12} maxLength={128} required />
       </label>
-      <label>
-        Confirm new password
+      <label className="field">
+        <span>Confirm new password</span>
         <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
       </label>
-      {error && <p className="bad" role="alert">{error}</p>}
-      <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="actions">
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+      </div>
     </form>
   )
 }

@@ -22,18 +22,18 @@ export default function Login({ onSignedIn }: { onSignedIn: (user: User) => void
   }
 
   return (
-    <form className="card form" onSubmit={submit}>
-      <h2>Sign in</h2>
+    <form className="panel form signin" onSubmit={submit}>
+      <h1>Sign in</h1>
       <p className="hint">
         First run? The one-time password is printed in the server log:{' '}
         <code>docker compose logs languageai</code>
       </p>
-      <label>
-        Username
+      <label className="field">
+        <span>Username</span>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
       </label>
-      <label>
-        Password
+      <label className="field">
+        <span>Password</span>
         <input
           type="password"
           value={password}
@@ -43,8 +43,10 @@ export default function Login({ onSignedIn }: { onSignedIn: (user: User) => void
           autoFocus
         />
       </label>
-      {error && <p className="bad" role="alert">{error}</p>}
-      <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="actions">
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      </div>
     </form>
   )
 }

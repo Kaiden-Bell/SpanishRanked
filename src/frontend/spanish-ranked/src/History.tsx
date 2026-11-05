@@ -40,33 +40,48 @@ export default function History({ onStart }: { onStart: () => void }) {
   }
 
   return (
-    <section>
-      <h2>History</h2>
-      {error && <p className="bad" role="alert">{error}</p>}
-      {total === null && !error && <p>Loading…</p>}
+    <>
+      <header className="page-head">
+        <h1>History</h1>
+        {!!total && (
+          <p className="lede num">
+            {total} study {total === 1 ? 'session' : 'sessions'} logged
+          </p>
+        )}
+      </header>
+      {error && <p className="error" role="alert">{error}</p>}
+      {total === null && !error && <p className="status">Loading…</p>}
       {total === 0 && (
-        <div className="card">
-          <p>No study sessions yet.</p>
-          <button onClick={onStart}>Start study session</button>
+        <div className="empty">
+          <p>No study sessions yet. Your logged sessions will appear here.</p>
+          <button className="btn primary" onClick={onStart}>Start Study Session</button>
         </div>
       )}
-      {items.map((s) => (
-        <article className="card entry" key={s.id}>
-          <header>
-            <strong>{s.mode === 'SELF_STUDY' ? 'Self-study' : 'Guided study'}</strong>
-            <span>
-              {s.activity_type.charAt(0) + s.activity_type.slice(1).toLowerCase()} · {s.duration_minutes} min
-            </span>
-            <time dateTime={s.created_at}>{when(s.created_at)}</time>
-          </header>
-          <p>{s.context_text}</p>
-          <ul className="chips">{s.terms.map((t) => <li key={t}>{t}</li>)}</ul>
-          <ul className="sentences">{s.sentences.map((x) => <li key={x}>{x}</li>)}</ul>
-        </article>
-      ))}
+      <div className="entries">
+        {items.map((s) => (
+          <article className="card entry" key={s.id}>
+            <header>
+              <span className="entry-mode">{s.mode === 'SELF_STUDY' ? 'Self-study' : 'Guided study'}</span>
+              <span className="entry-what num">
+                {s.activity_type.charAt(0) + s.activity_type.slice(1).toLowerCase()} · {s.duration_minutes} min
+              </span>
+              <time dateTime={s.created_at}>{when(s.created_at)}</time>
+            </header>
+            <p className="entry-context">{s.context_text}</p>
+            <ul className="tags" aria-label="Words and phrases">
+              {s.terms.map((t) => <li key={t}>{t}</li>)}
+            </ul>
+            <ul className="sentences" aria-label="Sentences" lang="es">
+              {s.sentences.map((x) => <li key={x}>{x}</li>)}
+            </ul>
+          </article>
+        ))}
+      </div>
       {total !== null && items.length < total && (
-        <button onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button>
+        <div className="actions">
+          <button className="btn" onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button>
+        </div>
       )}
-    </section>
+    </>
   )
 }

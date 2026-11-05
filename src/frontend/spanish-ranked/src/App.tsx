@@ -6,8 +6,15 @@ import ChangePassword from './ChangePassword'
 import History from './History'
 import Login from './Login'
 import NewSession from './NewSession'
+import Scene from './Scene'
 
 type View = 'dashboard' | 'history' | 'new'
+
+const NAV: { view: View; label: string }[] = [
+  { view: 'dashboard', label: 'Dashboard' },
+  { view: 'new', label: 'Study' },
+  { view: 'history', label: 'History' },
+]
 
 function awardMessage(a: Award): string {
   if (a.awarded_xp === 0) return 'Session saved. You have reached today’s study XP limit, but it still counts toward your streak.'
@@ -56,10 +63,13 @@ function App() {
   function go(next: View) {
     setNotice(undefined)
     setView(next)
+    window.scrollTo({ top: 0 })
   }
 
+  const signedIn = !!user && !user.must_change_password
+
   let body
-  if (user === undefined) body = <p>Loading…</p>
+  if (user === undefined) body = <p className="status">Loading…</p>
   else if (user === null) body = <Login onSignedIn={setUser} />
   else if (user.must_change_password) body = <ChangePassword onChanged={setUser} />
   else if (view === 'new')
@@ -68,28 +78,52 @@ function App() {
         onSaved={(award) => {
           setNotice(awardMessage(award))
           setView('dashboard')
+          window.scrollTo({ top: 0 })
         }}
       />
     )
   else if (view === 'history') body = <History onStart={() => go('new')} />
-  else body = <Dashboard notice={notice} onStart={() => go('new')} onHistory={() => go('history')} />
+  else
+    body = (
+      <Dashboard
+        name={user.username}
+        notice={notice}
+        onStart={() => go('new')}
+        onHistory={() => go('history')}
+      />
+    )
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <h1>Language AI</h1>
-        {user && !user.must_change_password && (
-          <nav aria-label="Main">
-            <button className={view === 'dashboard' ? 'active' : ''} onClick={() => go('dashboard')}>Dashboard</button>
-            <button className={view === 'history' ? 'active' : ''} onClick={() => go('history')}>History</button>
-            <button className={view === 'new' ? 'active' : ''} onClick={() => go('new')}>Start study session</button>
-            <button onClick={logout}>Sign out</button>
-          </nav>
+    <div className="shell">
+      <aside className="rail">
+        <div className="brand">
+          <span className="brand-name">Language AI</span>
+          <span className="brand-sub">Learn Spanish</span>
+        </div>
+        {signedIn && (
+          <>
+            <nav className="nav" aria-label="Primary">
+              {NAV.map((n) => (
+                <button key={n.view} aria-current={view === n.view ? 'page' : undefined} onClick={() => go(n.view)}>
+                  {n.label}
+                </button>
+              ))}
+            </nav>
+            <div className="rail-foot">
+              <span className="who">Signed in as {user.username}</span>
+              <button className="btn ghost" onClick={logout}>Sign out</button>
+            </div>
+          </>
         )}
-      </header>
-      {unreachable && <p className="bad" role="alert">Cannot reach the backend.</p>}
-      {body}
-    </main>
+      </aside>
+      <main className="stage" data-view={signedIn ? view : 'signin'}>
+        <Scene />
+        <div className="view">
+          {unreachable && <p className="error" role="alert">Cannot reach the backend.</p>}
+          {body}
+        </div>
+      </main>
+    </div>
   )
 }
 
