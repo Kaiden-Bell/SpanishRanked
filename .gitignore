@@ -4,3 +4,7 @@ eval/grading/results/
 data/
 __pycache__/
 .pytest_cache/
+
+.impeccable
+.agents
+.claude
