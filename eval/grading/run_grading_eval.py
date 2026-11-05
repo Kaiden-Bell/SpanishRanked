@@ -4,7 +4,12 @@
 Each case in cases.json is sent to the model using the MVP_DESIGN.md §8 grading
 contract: closed concept set, learner text marked as untrusted, JSON schema
 enforced through Ollama's `format` field. Results are scored against labeled
-expected outcomes. Standard library only.
+expected outcomes. Standard library only, except --backend (see below).
+
+--backend grades through the application's own code (src/backend/app/assessment/grade.py and the
+Ollama / LanguageTool clients) instead of this script's copy of the logic, so the numbers describe
+what the app actually does, including its retry on invalid output. Run it with the project's
+virtualenv, because the backend needs httpx.
 """
 
 import argparse
@@ -236,6 +241,58 @@ def evaluate_model(host, model, cases, runs, timeout, lt_url=None):
     return results
 
 
+def evaluate_backend(host, model, cases, runs, timeout, lt_url):
+    """Same cases, graded by the application's own pipeline. Records match evaluate_model()."""
+    sys.path.insert(0, str(HERE.parents[1] / "src/backend"))
+    from app.assessment.grade import GradingError, grade_item
+    from app.clients.grammar import LanguageToolClient
+    from app.clients.model import ModelUnavailable, OllamaClient
+
+    class Counting(OllamaClient):
+        calls = 0
+
+        def chat_json(self, *args, **kwargs):
+            self.calls += 1
+            return super().chat_json(*args, **kwargs)
+
+    client = Counting(host, model, timeout)
+    grammar = LanguageToolClient(lt_url, 3.0)
+    results = []
+    for case in cases:
+        for run in range(runs):
+            record = {"case_id": case["id"], "kind": case["kind"], "run": run}
+            client.calls = 0
+            start = time.monotonic()
+            envelope = grammar.check(case["answer"])  # production always asks; a failure just means no hints
+            if envelope["status"] == "ok":
+                record["lt_matches"] = envelope["matches"]
+            else:
+                record["lt_unavailable"] = envelope["reason"]
+            try:
+                graded = grade_item(client, case["prompt"], case["answer"], case["concepts"], envelope)
+            except (GradingError, ModelUnavailable) as exc:
+                record.update(error=f"{type(exc).__name__}: {exc}", outcomes=None, model_calls=client.calls)
+                results.append(record)
+                print(f"  {case['id']:<22} run {run}: FAILED {type(exc).__name__}: {exc}")
+                continue
+            wall = time.monotonic() - start
+            outcomes = {e["concept_token"]: e["outcome"] for e in graded["evidence"]}
+            correct = {c: outcomes[c] in case["expected"][c] for c in case["concepts"]}
+            record.update(
+                wall_seconds=round(wall, 3),
+                model_calls=client.calls,  # 2 means the first answer was invalid and the retry was needed
+                raw_content=json.dumps(graded, ensure_ascii=False),
+                outcomes=outcomes,
+                correct=correct,
+                error=None,
+            )
+            results.append(record)
+            mark = "ok" if all(correct.values()) else "WRONG"
+            retry = " (retried)" if client.calls > 1 else ""
+            print(f"  {case['id']:<22} run {run}: {mark:<11} {outcomes}  {wall:.1f}s{retry}")
+    return results
+
+
 def summarize(model, cases, results):
     by_kind = defaultdict(lambda: [0, 0])  # kind -> [correct concept judgments, total]
     false_errors = [0, 0]  # only over scored responses
@@ -282,6 +339,9 @@ def summarize(model, cases, results):
     print(f"Adversarial pass    {pct(*by_kind['adversarial'])}")
     print(f"Schema validity     {pct(schema_ok, len(answered))}")
     print(f"Request failures    {pct(len(results) - len(answered), len(results))}   (timeouts/errors)")
+    retried = [r for r in answered if r.get("model_calls", 1) > 1]
+    if any("model_calls" in r for r in answered):
+        print(f"Needed a retry      {pct(len(retried), len(answered))}   (first model answer was invalid)")
     if multi:
         print(f"Consistency         {pct(consistent, len(multi))}")
     if walls:
@@ -298,10 +358,15 @@ def main():
     parser.add_argument("--guidance", type=Path, default=HERE.parents[1] / "src/backend/app/assessment/concept_guidance.json", help="per-concept grading rules")
     parser.add_argument("--lt-url", help="LanguageTool server (e.g. http://localhost:8010); adds its findings as hints")
     parser.add_argument("--no-guidance", action="store_true", help="baseline run without concept guidance")
+    parser.add_argument("--backend", action="store_true", help="grade through the application's own code (use the project virtualenv)")
     args = parser.parse_args()
 
+    if args.backend and args.no_guidance:
+        sys.exit("error: --backend always uses the application's concept guidance; drop --no-guidance")
+    if args.backend and not args.lt_url:
+        args.lt_url = "http://localhost:8010"  # the app always asks LanguageTool
     cases = json.loads(args.cases.read_text())
-    if not args.no_guidance:
+    if not args.no_guidance and not args.backend:
         guidance = json.loads(args.guidance.read_text())
         for case in cases:
             case["guidance"] = "\n".join(guidance[c] for c in case["concepts"] if c in guidance)
@@ -316,12 +381,15 @@ def main():
             print(f"\nskipping: {problem}")
             continue
         print(f"\nGrading {len(cases)} cases x {args.runs} run(s) with {model}")
-        results = evaluate_model(args.host, model, cases, args.runs, args.timeout, args.lt_url)
+        if args.backend:
+            results = evaluate_backend(args.host, model, cases, args.runs, args.timeout, args.lt_url)
+        else:
+            results = evaluate_model(args.host, model, cases, args.runs, args.timeout, args.lt_url)
         summarize(model, cases, results)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        variant = ("+lt" if args.lt_url else "") + ("-noguide" if args.no_guidance else "")
+        variant = ("-backend" if args.backend else "") + ("+lt" if args.lt_url else "") + ("-noguide" if args.no_guidance else "")
         out = out_dir / f"{model.replace('/', '_').replace(':', '_')}{variant}-{stamp}.json"
-        out.write_text(json.dumps({"model": model, "host": args.host, "guidance": not args.no_guidance, "lt_url": args.lt_url, "results": results}, indent=2, ensure_ascii=False))
+        out.write_text(json.dumps({"model": model, "host": args.host, "guidance": not args.no_guidance, "backend": args.backend, "lt_url": args.lt_url, "results": results}, indent=2, ensure_ascii=False))
         print(f"Raw results: {out}")
 
 
