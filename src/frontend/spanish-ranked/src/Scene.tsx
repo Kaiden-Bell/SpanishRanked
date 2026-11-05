@@ -15,10 +15,10 @@ type SceneDef = {
 // Photos live at public/scenes/<id>.webp. Until a file exists the tinted gradient shows instead.
 const SCENES: SceneDef[] = [
   { id: 'granada', place: 'Granada', title: 'The Alhambra at dusk', s1: '#2b2f3a', s2: '#8a6a4a', s3: '#c28a5a' },
-  { id: 'barcelona', place: 'Barcelona', title: 'A quiet street in El Born', s1: '#1f2a33', s2: '#5d6f78', s3: '#c9b48f' },
+  { id: 'tonanes', place: 'Cantabria', title: 'Cliffs at Toñanes on the coast path', credit: 'Photo: Hotelpalacion, CC BY-SA 4.0, Wikimedia Commons', s1: '#1f2a33', s2: '#5d6f78', s3: '#c9b48f' },
   { id: 'salamanca', place: 'Salamanca', title: 'The old university', s1: '#2a1f18', s2: '#6b4a2f', s3: '#b88a4f' },
-  { id: 'cantabria', place: 'Cantabria', title: 'Green hills above the northern coast', s1: '#18262a', s2: '#3f6a5c', s3: '#9fb59a' },
-  { id: 'sevilla', place: 'Sevilla', title: 'A courtyard with orange trees', s1: '#2a2218', s2: '#7c6a3a', s3: '#d0a95c' },
+  { id: 'cantabria', place: 'Cantabria', title: 'Estuary and green hills on the coast', credit: 'Photo: Pexels, free to use', s1: '#18262a', s2: '#3f6a5c', s3: '#9fb59a' },
+  { id: 'sevilla', place: 'Sevilla', title: 'The Torre del Oro at dusk', credit: 'Photo: Benjamin Smith, CC BY-SA 4.0, Wikimedia Commons', s1: '#2a2218', s2: '#7c6a3a', s3: '#d0a95c' },
 ]
 
 /** One scene per calendar day, the same all day. */

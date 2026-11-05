@@ -1,0 +1,5 @@
+output-file-name-to-change,photo-to-inspect,listed-dims,link,attributions
+granada.webp,“Alhambra at dusk Granada Spain.jpg”,4592 × 1949,https://commons.wikimedia.org/wiki/File:Alhambra_at_dusk_Granada_Spain.jpg,"See1 Do1 Teach1 CC BY 2.0 via Wikimedia Commons"
+barcelona.webp,"Acantilados_Primoriu_en_Toñanes,_camino_de_Santiago_por_la_costa_de_Cantabria",5184 x 3456,https://commons.wikimedia.org/wiki/File:Acantilados_Primoriu_en_To%C3%B1anes,_camino_de_Santiago_por_la_costa_de_Cantabria.jpg,"Hotelpalacion CC BY-SA 4.0 via Wikimedia Commons" 
+cantabria.webp,"whatttt.png",1672x941,https://www.pexels.com/photo/aerial-view-of-cantabria-s-coastal-landscape-36732250/,idk
+sevilla.webp,"Sevilla - Guadalquivir at dusk.jpg",6720 × 4480,https://commons.wikimedia.org/wiki/File:Sevilla_-_Guadalquivir_at_dusk.jpg,"Benjamin Smith CC BY-SA 4.0 via Wikimedia Commons"
