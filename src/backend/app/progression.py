@@ -91,6 +91,18 @@ def xp_earned_on(conn: sqlite3.Connection, user_id: int, source_type: str, local
     ).fetchone()[0]
 
 
+def existing_award(conn: sqlite3.Connection, user_id: int, source_type: str, source_id: int) -> Award | None:
+    """The award already recorded for this action, if any."""
+    row = conn.execute(
+        "SELECT base_xp, multiplier, awarded_xp FROM xp_events WHERE user_id = ? AND source_type = ? AND source_id = ?",
+        (user_id, source_type, source_id),
+    ).fetchone()
+    if row is None:
+        return None
+    raw = _scale(row["base_xp"], row["multiplier"])
+    return Award(row["base_xp"], row["multiplier"], row["awarded_xp"], capped=row["awarded_xp"] < raw, already_awarded=True)
+
+
 def award_xp(
     conn: sqlite3.Connection,
     user_id: int,
@@ -105,16 +117,9 @@ def award_xp(
     Idempotent per (user, source_type, source_id): a repeat returns the original award and pays nothing.
     Even a fully capped action is recorded (with 0 XP) because it still counts toward the streak.
     """
-    existing = conn.execute(
-        "SELECT base_xp, multiplier, awarded_xp FROM xp_events WHERE user_id = ? AND source_type = ? AND source_id = ?",
-        (user_id, source_type, source_id),
-    ).fetchone()
+    existing = existing_award(conn, user_id, source_type, source_id)
     if existing:
-        raw = _scale(existing["base_xp"], existing["multiplier"])
-        return Award(
-            existing["base_xp"], existing["multiplier"], existing["awarded_xp"],
-            capped=existing["awarded_xp"] < raw, already_awarded=True,
-        )
+        return existing
 
     local_date = at.astimezone(tz).date()
     multiplier = streak_multiplier(streak_state(active_days(conn, user_id), local_date).next_length)

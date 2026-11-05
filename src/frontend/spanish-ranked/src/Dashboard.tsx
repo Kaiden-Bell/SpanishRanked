@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { api, ApiError, type Progress, type StudySession } from './api'
+import { api, ApiError, type Progress, type StudySession, type SystemStatus } from './api'
 
-type Props = { name: string; notice?: string; onStart: () => void; onHistory: () => void }
+type Props = { name: string; notice?: string; onStart: () => void; onQuiz: () => void; onHistory: () => void }
 
 // Level 1 has no assessments yet, so every skill is honestly unmeasured.
 const SKILLS = ['Reading', 'Writing', 'Listening', 'Speaking']
@@ -10,8 +10,9 @@ function when(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-export default function Dashboard({ name, notice, onStart, onHistory }: Props) {
+export default function Dashboard({ name, notice, onStart, onQuiz, onHistory }: Props) {
   const [progress, setProgress] = useState<Progress | null>(null)
+  const [system, setSystem] = useState<SystemStatus | null>(null)
   const [recent, setRecent] = useState<StudySession[]>([])
   const [total, setTotal] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -27,8 +28,13 @@ export default function Dashboard({ name, notice, onStart, onHistory }: Props) {
       .catch((err) => {
         if (err.name !== 'AbortError') setError(err instanceof ApiError ? err.message : 'Could not load progress.')
       })
+    // Advisory only: if the status call fails, the dashboard simply shows no banner.
+    api.systemStatus(controller.signal).then(setSystem).catch(() => {})
     return () => controller.abort()
   }, [])
+
+  const modelDown = system !== null && system.model !== 'ok'
+  const hintsDown = system !== null && system.languagetool !== 'ok'
 
   const isNew = !!progress && total === 0 && progress.total_xp === 0
 
@@ -38,7 +44,8 @@ export default function Dashboard({ name, notice, onStart, onHistory }: Props) {
       <p className="hello-sub">{isNew ? 'Log your first session to begin.' : 'Ready to keep learning Spanish?'}</p>
       <div className="actions">
         <button className="btn primary" onClick={onStart}>Start Study Session</button>
-        {total > 0 && <button className="btn" onClick={onHistory}>View history</button>}
+        <button className="btn" onClick={onQuiz}>Quick Assessment</button>
+        {total > 0 && <button className="btn ghost" onClick={onHistory}>View history</button>}
       </div>
     </header>
   )
@@ -78,6 +85,13 @@ export default function Dashboard({ name, notice, onStart, onHistory }: Props) {
   return (
     <>
       {notice && <p className="notice" role="status">{notice}</p>}
+      {(modelDown || hintsDown) && (
+        <p className="notice warn" role="status">
+          {modelDown
+            ? 'Quizzes are unavailable: the local language model is not reachable. Logging study sessions still works.'
+            : 'The grammar checker is offline. Quizzes still work, but are graded without its hints.'}
+        </p>
+      )}
       {hello}
 
       <div className="grid">

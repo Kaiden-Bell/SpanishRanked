@@ -15,6 +15,13 @@ class Settings:
     # IANA name. Decides where a "day" ends for streaks and daily XP caps; set it once at setup.
     # Each award stores its local date, so changing this later never rewrites past XP.
     timezone: str = "UTC"
+    # Sidecar services (MVP_DESIGN.md §5). An empty URL means "not configured" and counts as down.
+    languagetool_url: str = ""
+    ollama_url: str = ""
+    model_name: str = "qwen2.5:7b"
+    languagetool_timeout: float = 3.0
+    # Generous because the target homelab has no GPU; a single graded answer takes several seconds.
+    model_timeout: float = 120.0
 
     @property
     def tz(self) -> ZoneInfo:
@@ -42,4 +49,9 @@ class Settings:
             ),
             secure_cookies=os.environ.get("LANGUAGEAI_SECURE_COOKIES", "") in ("1", "true"),
             session_ttl_hours=int(os.environ.get("LANGUAGEAI_SESSION_TTL_HOURS", 24 * 7)),
+            languagetool_url=os.environ.get("LANGUAGEAI_LANGUAGETOOL_URL", ""),
+            ollama_url=os.environ.get("LANGUAGEAI_OLLAMA_URL", ""),
+            model_name=os.environ.get("LANGUAGEAI_MODEL") or "qwen2.5:7b",
+            languagetool_timeout=float(os.environ.get("LANGUAGEAI_LANGUAGETOOL_TIMEOUT", 3.0)),
+            model_timeout=float(os.environ.get("LANGUAGEAI_MODEL_TIMEOUT", 120.0)),
         )

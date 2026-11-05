@@ -22,6 +22,14 @@ def get_db(request: Request):
         conn.close()
 
 
+def get_model(request: Request):
+    return request.app.state.model
+
+
+def get_grammar(request: Request):
+    return request.app.state.grammar
+
+
 @dataclass(frozen=True)
 class CurrentUser:
     id: int

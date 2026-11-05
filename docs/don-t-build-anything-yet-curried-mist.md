@@ -7,7 +7,9 @@ LanguageTool (advisory hints) and Qwen2.5:7b (essential judge), with the backend
 The design doc bundles everything into one container. On review, that makes failure handling awkward: Docker only restarts a
 container when its main process exits, so a crashed LanguageTool inside the app container would go unnoticed. The two
 dependencies also fail differently. LanguageTool is advisory, while Ollama is essential. This plan makes each service
-independent, makes degradation explicit, and never loses a learner's answers. **Nothing is built until this plan is approved.**
+independent, makes degradation explicit, and never loses a learner's answers.
+
+**Status (2026-11-05): approved and built.** The user approved the plan, the MVP_DESIGN.md edits, Ollama as a compose sidecar (profile `ollama`) and "PARTIAL pays 0". Outstanding verification items are listed under Milestone D in `MVP_DESIGN.md` §11. Deviations from this plan: an answer pays only when every target concept is HIT (the plan said "HIT pays +3" per outcome), and a retry after invalid model output now tells the model what was wrong, since at temperature 0 an identical retry repeats the same mistake.
 
 ## Decisions (confirmed with the user)
 1. **Packaging: compose sidecars.** App, LanguageTool and (optionally) Ollama are separate services in one compose project.

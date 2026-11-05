@@ -6,12 +6,22 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, progression
+from .clients.grammar import GrammarChecker, LanguageToolClient
+from .clients.model import LanguageModel, OllamaClient
 from .config import Settings
+from .routes_assessments import router as assessments_router
 from .routes_auth import announce_bootstrap, bootstrap_owner, router as auth_router
 from .routes_progress import router as progress_router
 from .routes_sessions import router as sessions_router
+from .routes_system import router as system_router
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    model: LanguageModel | None = None,
+    grammar: GrammarChecker | None = None,
+) -> FastAPI:
+    """``model`` and ``grammar`` default to the configured HTTP clients; tests pass fakes."""
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
@@ -28,10 +38,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Language AI", lifespan=lifespan)
     app.state.settings = settings
+    app.state.model = model or OllamaClient(settings.ollama_url, settings.model_name, settings.model_timeout)
+    app.state.grammar = grammar or LanguageToolClient(settings.languagetool_url, settings.languagetool_timeout)
 
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(progress_router)
+    app.include_router(assessments_router)
+    app.include_router(system_router)
 
     @app.get("/api/health")
     def health():

@@ -295,7 +295,7 @@ def main():
     parser.add_argument("--runs", type=int, default=1, help="runs per case (consistency check)")
     parser.add_argument("--cases", type=Path, default=HERE / "cases.json")
     parser.add_argument("--timeout", type=float, default=300, help="seconds per request")
-    parser.add_argument("--guidance", type=Path, default=HERE / "concept_guidance.json", help="per-concept grading rules")
+    parser.add_argument("--guidance", type=Path, default=HERE.parents[1] / "src/backend/app/assessment/concept_guidance.json", help="per-concept grading rules")
     parser.add_argument("--lt-url", help="LanguageTool server (e.g. http://localhost:8010); adds its findings as hints")
     parser.add_argument("--no-guidance", action="store_true", help="baseline run without concept guidance")
     args = parser.parse_args()

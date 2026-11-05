@@ -121,8 +121,17 @@ ALTER TABLE xp_events ADD COLUMN local_date TEXT NOT NULL DEFAULT '';
 CREATE INDEX idx_xp_events_user_day ON xp_events (user_id, local_date);
 """
 
+# Assessment grading (Milestone D). `fingerprint` identifies identical questions + answers so a
+# retake pays no extra XP; `grading_error` explains why a SUBMITTED attempt is still ungraded.
+SCHEMA_V4 = """
+ALTER TABLE assessments ADD COLUMN fingerprint TEXT;
+ALTER TABLE assessments ADD COLUMN grading_error TEXT;
+ALTER TABLE assessments ADD COLUMN graded_at TEXT;
+CREATE INDEX idx_assessments_user ON assessments (user_id, id DESC);
+"""
+
 # Append new migrations; never edit one that has shipped. user_version is the count applied.
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3]
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4]
 
 
 def utc_timestamp(moment: datetime | None = None) -> str:

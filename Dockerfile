@@ -21,4 +21,7 @@ ENV LANGUAGEAI_DATA_DIR=/data \
     LANGUAGEAI_FRONTEND_DIST=/app/frontend-dist
 VOLUME /data
 EXPOSE 8000
+# Liveness only (database). A slow model must never make Docker restart a healthy app.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"
 CMD ["uvicorn", "app.main:app", "--app-dir", "backend", "--host", "0.0.0.0", "--port", "8000"]

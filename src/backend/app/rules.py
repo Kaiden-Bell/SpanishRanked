@@ -26,3 +26,6 @@ RANKS = [
 
 # (minimum consecutive days including the action being rewarded, multiplier), descending.
 STREAK_MULTIPLIERS = [(30, 1.20), (14, 1.15), (7, 1.10), (3, 1.05), (1, 1.00)]
+
+# Questions in one generated quiz. Each asks for one written sentence using 1-2 of the learner's own terms.
+QUIZ_ITEMS = 3

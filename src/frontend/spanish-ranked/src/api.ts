@@ -24,6 +24,40 @@ export type Progress = {
   today: { date: string; study_xp: number; study_xp_cap: number }
 }
 
+export type Outcome = 'HIT' | 'PARTIAL' | 'MISS'
+
+export type AssessmentItem = {
+  id: number
+  prompt: string
+  concepts: string[]
+  response_text: string | null
+  feedback: string | null
+  evidence: { concept_token: string; outcome: Outcome; issue: string }[]
+}
+
+export type Assessment = {
+  id: number
+  /** GENERATED = waiting for answers, SUBMITTED = answers saved but not graded yet, GRADED = done. */
+  status: 'GENERATED' | 'SUBMITTED' | 'GRADED' | 'FAILED'
+  created_at: string
+  submitted_at: string | null
+  graded_at: string | null
+  grading_error: string | null
+  grammar_hints_unavailable: boolean
+  correct: number | null
+  items: AssessmentItem[]
+  award: Award | null
+}
+
+export type AssessmentSummary = Pick<Assessment, 'id' | 'status' | 'created_at' | 'graded_at' | 'correct'> & { total: number }
+
+export type SystemStatus = {
+  database: 'ok' | 'degraded' | 'down'
+  languagetool: 'ok' | 'degraded' | 'down'
+  model: 'ok' | 'degraded' | 'down'
+  checked_at: string
+}
+
 export type StudySessionInput = {
   mode: StudySession['mode']
   activity_type: string
@@ -114,6 +148,20 @@ export const api = {
   createSession: (input: StudySessionInput) =>
     request<StudySession & { award: Award }>('POST', '/api/study-sessions', input),
   progress: (signal?: AbortSignal) => request<Progress>('GET', '/api/progress', undefined, signal),
+  systemStatus: (signal?: AbortSignal) => request<SystemStatus>('GET', '/api/system/status', undefined, signal),
+  createAssessment: () => request<Assessment>('POST', '/api/assessments'),
+  listAssessments: (offset: number, limit = 20, signal?: AbortSignal) =>
+    request<{ total: number; items: AssessmentSummary[] }>(
+      'GET',
+      `/api/assessments?limit=${limit}&offset=${offset}`,
+      undefined,
+      signal,
+    ),
+  getAssessment: (id: number, signal?: AbortSignal) =>
+    request<Assessment>('GET', `/api/assessments/${id}`, undefined, signal),
+  submitAssessment: (id: number, answers: { item_id: number; text: string }[]) =>
+    request<Assessment>('POST', `/api/assessments/${id}/submit`, { answers }),
+  gradeAssessment: (id: number) => request<Assessment>('POST', `/api/assessments/${id}/grade`),
   listSessions: (offset: number, limit = 20, signal?: AbortSignal) =>
     request<{ total: number; items: StudySession[] }>(
       'GET',

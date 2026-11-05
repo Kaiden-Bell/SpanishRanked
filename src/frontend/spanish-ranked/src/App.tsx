@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { api, setCsrfToken, setSignedOutHandler, type Award, type User } from './api'
+import Assessment from './Assessment'
 import Dashboard from './Dashboard'
 import ChangePassword from './ChangePassword'
 import History from './History'
@@ -8,11 +9,12 @@ import Login from './Login'
 import NewSession from './NewSession'
 import Scene from './Scene'
 
-type View = 'dashboard' | 'history' | 'new'
+type View = 'dashboard' | 'history' | 'new' | 'quiz'
 
 const NAV: { view: View; label: string }[] = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'new', label: 'Study' },
+  { view: 'quiz', label: 'Quiz' },
   { view: 'history', label: 'History' },
 ]
 
@@ -83,12 +85,14 @@ function App() {
       />
     )
   else if (view === 'history') body = <History onStart={() => go('new')} />
+  else if (view === 'quiz') body = <Assessment onStudy={() => go('new')} onDone={() => go('dashboard')} />
   else
     body = (
       <Dashboard
         name={user.username}
         notice={notice}
         onStart={() => go('new')}
+        onQuiz={() => go('quiz')}
         onHistory={() => go('history')}
       />
     )

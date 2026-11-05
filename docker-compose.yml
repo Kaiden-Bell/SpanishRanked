@@ -8,9 +8,44 @@ services:
     environment:
       # Where a "day" ends for streaks and daily XP caps; set once in .env (IANA name, e.g. America/Chicago).
       LANGUAGEAI_TIMEZONE: ${LANGUAGEAI_TIMEZONE:-UTC}
+      # Sidecars are reached by URL on the internal network. Override to point at services elsewhere
+      # (for example an Ollama already running on the host: http://host.docker.internal:11434).
+      LANGUAGEAI_LANGUAGETOOL_URL: ${LANGUAGEAI_LANGUAGETOOL_URL:-http://languagetool:8010}
+      LANGUAGEAI_OLLAMA_URL: ${LANGUAGEAI_OLLAMA_URL:-http://ollama:11434}
+      LANGUAGEAI_MODEL: ${LANGUAGEAI_MODEL:-qwen2.5:7b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - languageai-data:/data
+    restart: unless-stopped
+    # The app starts without the sidecars and degrades gracefully (MVP_DESIGN.md §5).
+    depends_on:
+      languagetool:
+        condition: service_started
+        required: false
+      ollama:
+        condition: service_started
+        required: false
+
+  # Advisory grammar checker. Internal network only: no ports are published.
+  languagetool:
+    image: erikvl87/languagetool
+    environment:
+      # LanguageTool's own default is 8010 in this image.
+      Java_Xms: 256m
+      Java_Xmx: 1g
+    restart: unless-stopped
+
+  # Local model runtime, behind a profile: `docker compose --profile ollama up`.
+  # Skip the profile if Ollama already runs on the host and set LANGUAGEAI_OLLAMA_URL instead.
+  # First time only: `docker compose exec ollama ollama pull qwen2.5:7b` (about 4.7 GB, kept in the volume).
+  ollama:
+    image: ollama/ollama
+    profiles: ["ollama"]
+    volumes:
+      - ollama-models:/root/.ollama
     restart: unless-stopped
 
 volumes:
   languageai-data:
+  ollama-models:

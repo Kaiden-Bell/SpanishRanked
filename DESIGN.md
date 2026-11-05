@@ -65,12 +65,14 @@ Dark only (`color-scheme: dark`). There is no light theme.
   - `.row2` for side-by-side fields, which stack below 760px
   - `.seg` for a two-way choice, using `aria-pressed`
 - `.bar > .fill` is driven by `--w` (0–1) and animates with scaleX only. `.empty-track` is a dashed line for a skill that hasn't been measured.
+- Quiz (`Assessment.tsx`): `.quiz-list` / `.quiz-item` cards, with the prompt in the display font and target words as `.tags`. Results use `.outcome` pills: `hit` is solid olive, `partial` is outlined, `miss` uses `--bad`. Outcomes are always labelled in words ("Correct", "Partly right", "Missed"), never by colour alone. The screen has four states: start, answering, grading (shows a wait message, because a local model can take a minute), and pending (answers saved, retry offered, no XP yet).
+- `.notice.warn` is the dashboard banner when the model or grammar checker is offline. It is advisory: the dashboard works without it.
 - `.card` and `.panel` are translucent surfaces. `.notice` is the save confirmation, `.error` the error box, `.empty` the dashed empty state, and `.tags` and `.sentences` are used in History entries.
 
 ## Rules
 
 - No kicker or eyebrow above headings. No progress rings or sparklines. No rows of icon cards.
-- Ship no placeholders. Features that aren't built (assessments, vocabulary, challenges) get no nav item or button. "Quick Assessment" returns as the secondary CTA once assessments exist.
+- Ship no placeholders. Features that aren't built (vocabulary, challenges, per-skill progress) get no nav item or button. "Quick Assessment" is the secondary dashboard CTA now that quizzes exist.
 - Skills read "Not yet assessed" until there is real assessment data. Never show an invented CEFR level.
 - Rank is an activity rank, not a proficiency claim.
 - Keep the focus ring visible (2px accent). `prefers-reduced-motion` turns off all transitions and animations.

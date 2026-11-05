@@ -3,7 +3,7 @@
 **Status:** Draft v0.1  
 **Project type:** Open-source, self-hosted language-learning web application  
 **Primary language for MVP:** Spanish  
-**Last updated:** 2026-11-04
+**Last updated:** 2026-11-05
 
 ## 1. Purpose
 
@@ -17,7 +17,7 @@ Level 1 is successful when a user can complete that loop entirely on their own m
 
 ### Included
 
-- Deploy one application container with a web UI, Python backend, local SQLite database, and local text-inference capability.
+- Deploy as one Docker Compose project (`docker compose up`): the application container (web UI, Python backend, local SQLite database) plus separate LanguageTool and Ollama services for local grammar checking and text inference.
 - Run without cloud services or external API calls after installation and model provisioning.
 - Secure initial administrator access; force a password change on first login.
 - Show rank, total XP, XP needed for the next rank, current streak, and recent activity.
@@ -40,7 +40,7 @@ These belong in the post-MVP backlog. Avoid implementing placeholders that compl
 
 | ID | User story | Done when |
 | --- | --- | --- |
-| MVP-01 | As an owner, I can start Language AI locally. | One Docker service starts; dashboard and API are accessible; data survives container recreation. |
+| MVP-01 | As an owner, I can start Language AI locally. | One compose project starts; dashboard and API are accessible; data survives container recreation. |
 | MVP-02 | As an owner, I can sign in securely. | Initial credentials are unique per installation; first login requires setting a new password; protected routes reject anonymous requests. |
 | MVP-03 | As a learner, I can log study. | A valid session saves duration, activity, context, 3–5 target terms, and 2–3 sentences. |
 | MVP-04 | As a learner, I can review what I logged. | Session history displays stored inputs in chronological order. |
@@ -51,7 +51,7 @@ These belong in the post-MVP backlog. Avoid implementing placeholders that compl
 
 ## 4. Minimum user journey
 
-1. Start the application using the documented single-container Docker deployment.
+1. Start the application using the documented Docker Compose deployment.
 2. Open the browser dashboard, sign in using a unique installation credential, and change the password.
 3. See an empty dashboard with **Start Study Session**.
 4. Choose **Self-Study** or **Guided Study**, then enter the required session data.
@@ -68,9 +68,22 @@ When no valid study history exists, the app offers a study-session action instea
 - **Frontend:** React + TypeScript (Vite for development); built static assets served by the application container.
 - **Backend:** Python + FastAPI for authentication, sessions, assessments, progress, and data access.
 - **Database:** SQLite on a persistent Docker volume; enable foreign keys and use transactions.
-- **AI:** A lightweight, locally executed, instruction-following text model with structured JSON output. The container must include a compatible inference runtime. Model choice is configurable rather than hardcoded into application logic.
-- **Deployment:** One Docker service/container. No external LLM API, external database, or cloud account is required for normal use.
-- **Grammar checker:** LanguageTool runs as a local HTTP server inside the same container, started by the app's entrypoint. Its rules and data are baked into the image so no runtime download is needed. It is advisory only (see §8).
+- **AI:** A lightweight, locally executed, instruction-following text model with structured JSON output, served by Ollama as its own compose service (a compose profile), reached by URL. Model choice is configurable rather than hardcoded into application logic.
+- **Deployment:** One Docker Compose project: the app, LanguageTool and Ollama as separate services, so a crash in one is visible to Docker and cannot silently take down another. The app starts even when LanguageTool or Ollama is absent, and degrades as described in "Failure handling" below. No external LLM API, external database, or cloud account is required for normal use.
+- **Grammar checker:** LanguageTool runs as its own local HTTP service on the internal compose network, reached by URL. It is advisory only (see §8): if it is down or slow, grading continues without hints and the learner is told.
+
+**Failure handling:**
+
+| Event | Behaviour |
+| --- | --- |
+| LanguageTool down or slow (3 s timeout) | Grade with the model alone; store the checker result as `{"status":"unavailable"}`, distinct from `{"status":"ok","matches":[]}`; warn the learner. After 3 consecutive failures it is skipped for 60 s. |
+| Model down at quiz generation | "Quizzes unavailable" message; nothing saved, no XP. Study logging keeps working. |
+| Model down or times out at grading | Answers are saved, status stays `SUBMITTED` ("grading pending"), the learner can retry; no XP until `GRADED`. |
+| Malformed or out-of-scope model JSON | Validated and retried once; otherwise stays `SUBMITTED` with a recorded error. No XP on unvalidated data. |
+| Double submit, or retry after success | Only `SUBMITTED → GRADED` is allowed, and the XP award is idempotent per assessment. |
+| Identical retake (same questions, same answers) | Stored fingerprint yields no additional XP. |
+
+`/api/health` is pure liveness (database only), so a slow model never causes Docker to restart a healthy app. `GET /api/system/status` (authenticated) reports `database`, `languagetool` and `model` as `ok`, `degraded` or `down`.
 
 **Model distribution constraint:** Running fully offline is not the same as installing fully offline. The released image must either bundle compatible model weights or provide an explicitly documented one-time local provisioning step. Once provisioned, assessment generation must work without internet access. Document model size and RAM needs after benchmarking on the target homelab.
 
@@ -121,7 +134,7 @@ Store the original response, the raw LanguageTool matches, and the AI explanatio
 
 - Display a simple configurable ladder beginning with **Pre-Learner I, II, III** and **Learner I, II, III**.
 - For MVP, rank is an **XP-based activity rank**, not a certified proficiency claim. Skill-gated promotions will be introduced later.
-- Award XP for a completed, valid study log and a completed assessment; amounts are constants in backend configuration, not model-generated values.
+- Award XP for a completed, valid study log and for each correct answer in a graded assessment; amounts are constants in backend configuration, not model-generated values. An assessment answer is correct when the model's outcome is `HIT` for every target concept of that question; `PARTIAL` and `MISS` pay nothing. Assessment XP is capped per local day (`DAILY_XP_CAP`).
 - Count a completed study session or submitted assessment as an eligible daily action. Logging in or opening a page does not extend a streak.
 - A calendar day counts at most once toward streak continuity in the user's configured timezone. Set one default timezone at setup; changing it should not rewrite past XP.
 - Apply a modest capped streak multiplier to eligible new actions; missed days end the active streak but never remove earned XP.
@@ -186,7 +199,7 @@ Rules:
 - **Disagreement detection is deferred.** Level 1 stores the raw LanguageTool matches so disagreement can be derived later. It does not compare them with the model's outcome or surface differences to the learner.
 - **Matches never create concept evidence.** They are stored with the attempt and reach the model only as hints.
 - **Concept guidance is configuration.** Per-concept grading rules (the format in `eval/grading/concept_guidance.json`) are injected into the prompt for each target concept. They are authored data, not model output.
-- **LanguageTool output does not change XP.** XP is awarded for a completed, valid assessment (§7), not per outcome, so checker output cannot move points in either direction.
+- **LanguageTool output does not change XP.** XP comes only from the model's validated `HIT` outcomes (§7), which the backend scores. Checker output never reaches the scoring step, so it cannot move points in either direction.
 - **Both model and checker output are untrusted.** LanguageTool matches quote learner text, so they go inside the same delimited block as the answer (§10).
 
 ## 9. Interface outline
@@ -194,7 +207,7 @@ Rules:
 1. **Setup/Login:** one-time credential enrollment or generated unique bootstrap credential; mandatory password change; normal login afterward.
 2. **Dashboard:** current rank, XP bar/next threshold, streak, recent sessions, and quick actions.
 3. **New Session:** study mode, activity type, duration, context, target terms, sentences, save confirmation.
-4. **History:** list/details of prior study logs and completed assessments.
+4. **History:** list/details of prior study logs. Listing completed assessments is post-MVP (`docs/backlog-learning.md`, §1).
 5. **Quick Assessment:** generated questions, typed answers, submit, feedback, earned XP.
 
 Keep the UI responsive for laptop and phone browsers; no native app is needed.
@@ -213,21 +226,32 @@ Keep the UI responsive for laptop and phone browsers; no native app is needed.
 
 ## 11. Implementation plan
 
-**Milestone A — Runnable shell:** Repository structure, Dockerfile / one-service Compose file, React build, FastAPI health route, SQLite volume, basic dashboard.
+**Milestone A — Runnable shell — done.** Repository structure, Dockerfile / one-service Compose file, React build, FastAPI health route, SQLite volume, basic dashboard.
 
-**Milestone B — Secure storage + study logs:** First-run auth, password reset on first login, session API, form validation, history page, migrations.
+**Milestone B — Secure storage + study logs — done.** First-run auth, password reset on first login, session API, form validation, history page, migrations.
 
-**Milestone C — Progression:** XP event ledger, rank display, streak calculation, unit tests for double-award prevention.
+**Milestone C — Progression — done.** XP event ledger, rank display, streak calculation, unit tests for double-award prevention.
 
-**Milestone D — Local AI assessment:** Model packaging/provisioning, LanguageTool integration, quiz generation, response submission, structured grading, per-concept guidance, concept evidence persistence, assessment feedback UI.
+**Milestone D — Local AI assessment — built and tested (2026-11-05); release checks outstanding.** Model packaging/provisioning, LanguageTool integration, quiz generation, response submission, structured grading, per-concept guidance, concept evidence persistence, assessment feedback UI.
+
+- *Built:* compose services for LanguageTool and Ollama; migration v4; model and checker clients with a circuit breaker; quiz generation from the learner's own terms; grading (LanguageTool hints, then the model, then backend scoring); per-answer XP; `/api/assessments`, `/api/system/status`; the Quiz screen and dashboard status banner.
+- *Verified:* 195 backend tests, with the XP and failure paths checked by deliberately breaking them (18 of 18 caught); live drills against `qwen2.5:7b` and LanguageTool (run as local processes, not under Docker): LanguageTool down, model down at generation and at submit, and a retry that pays exactly once; a browser walkthrough of the Quiz screen.
+- *Decided:* PARTIAL pays 0 XP and an answer is correct only when every target concept is HIT (§7).
+- *Outstanding before D is signed off:*
+  1. Run `eval/grading/run_grading_eval.py` through the backend path and confirm the quality bars (error detection ≥ 80%, false-error ≤ 10%, adversarial 100%, schema validity ≥ 95%, p95 ≤ 15 s). Not run yet; the live drills above show the pipeline works, not how accurate the grading is. Observed latency is about 35 s to grade a 3-question quiz on this CPU-only host.
+  2. Repeat the failure drills under `docker compose` (`stop languagetool`, stop Ollama). The compose file has not been exercised yet.
+  3. ~~History should list completed quizzes (§9).~~ Moved to post-MVP (`docs/backlog-learning.md`, §1).
+  4. Dashboard skills still show Writing as "Not yet assessed" after a quiz, because the progress API returns no per-skill data. Decide whether Level 1 shows a Writing result or keeps this wording.
 
 **Milestone E — Release check:** Test full user journey offline, restart persistence, poor model output, malformed JSON, authentication protection, and basic mobile layout. Write an installation guide and sample configuration.
 
 ### Definition of Done
 
-A new user can start one container, sign in securely, record a study session, complete a relevant text quiz, receive comprehensible feedback, gain XP, and still see the entire history after restarting the container—with no cloud inference required.
+A new user can start one compose project, sign in securely, record a study session, complete a relevant text quiz, receive comprehensible feedback, gain XP, and still see the entire history after restarting the container—with no cloud inference required.
 
 ## 12. Future backlog (not Level 1 commitments)
+
+Detailed notes for the learning features are in `docs/backlog-learning.md`: quiz history, corrected sentences and example sentences in feedback, per-word tense tables (after a vocabulary bank), and editing or deleting study sessions (which needs an XP rule first). Scene theming is in `docs/backlog-scenes.md`.
 
 - **Level 2:** LanguageTool/model disagreement detection and review (a checker signal and agreement flag on `concept_evidence`); concept-by-modality analytics; exposure vs assisted/independent assessment; targeted review; spaced repetition/Anki export; more refined HIT/PARTIAL/MISS feedback; textbook curriculum ingestion.
 - **Later:** Placement assessments; boss battles with reusable randomized scenarios and defined rubrics; controlled promotion attempts; remediation paths; speech/listening interaction; hesitation tracking with accessibility safeguards; advanced CEFR-aligned profiles; other languages; optional multi-user capabilities.
