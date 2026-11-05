@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-motion="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alhambra Dusk · Language AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <a class="brand" href="#/dashboard"><span class="brand-name">Language AI</span><span class="brand-sub">Learn Spanish</span></a>
+      <nav id="nav" aria-label="Primary"></nav>
+    </aside>
+    <main class="stage">
+      <figure id="scene" class="scene" role="img" aria-label="Environment image placeholder">
+        <figcaption id="scene-caption" class="scene-cap"></figcaption>
+      </figure>
+      <div id="view" class="view"></div>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="../shared/mock-data.js"></script>
+  <script src="../shared/store.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="../shared/app.js"></script>
+</body>
+</html>
