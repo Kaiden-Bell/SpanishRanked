@@ -248,7 +248,10 @@ Keep the UI responsive for laptop and phone browsers; no native app is needed.
   3. ~~History should list completed quizzes (§9).~~ Moved to post-MVP (`docs/backlog-learning.md`, §1).
   4. **Decided (2026-11-06):** the dashboard keeps "Not yet assessed" for Writing. The progress API returns no per-skill data, and per-skill results are Level 2 analytics (§12), so Level 1 does not add them. The wording is intentional, not a bug.
 
-**Milestone E — Release check:** Test full user journey offline, restart persistence, poor model output, malformed JSON, authentication protection, and basic mobile layout. Write an installation guide and sample configuration.
+**Milestone E — Release check — in progress (2026-11-06).** Test full user journey offline, restart persistence, poor model output, malformed JSON, authentication protection, and basic mobile layout. Write an installation guide and sample configuration.
+
+- *Done:* `README.md` (install, usage, degraded behaviour, backup, password reset, limitations) and `.env.example`. The backup command and password-reset path were checked against the running stack; disk figures are measured, the 8 GB RAM-while-grading figure is an estimate.
+- *Outstanding:* offline run-through; authenticated degraded-behaviour check under compose; malformed-output and auth-protection checks in the browser; mobile layout; a clean-machine install following the README exactly.
 
 ### Definition of Done
 
