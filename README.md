@@ -2,7 +2,7 @@
 
 A self-hosted Spanish study tracker with short local-AI quizzes. Log what you studied, take a quick assessment built from your own words and sentences, get feedback and XP, and watch your rank and streak. Everything runs on your machine: no account, no cloud AI, no telemetry.
 
-**Status:** Level 1 MVP, in release check. See [MVP_DESIGN.md](MVP_DESIGN.md) for scope, design and known limitations.
+**Status:** Level 1 MVP, in release check. See [MVP_DESIGN.md](docs/MVP_DESIGN.md) for scope, design and known limitations.
 
 ## What you need
 
@@ -37,7 +37,7 @@ If you have not logged anything yet, the app asks for a study session instead of
 
 ## When something is down
 
-The app keeps working when the helpers are not available (see [MVP_DESIGN.md](MVP_DESIGN.md) §5):
+The app keeps working when the helpers are not available (see [MVP_DESIGN.md](docs/MVP_DESIGN.md) §5):
 
 | Down | What you see |
 | --- | --- |
@@ -90,7 +90,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cd src/frontend/spanish-ranked && npm ci && npm run dev
 ```
 
-Grading quality is measured with `eval/grading/run_grading_eval.py`; see [eval/grading/README.md](eval/grading/README.md). Post-MVP ideas live in [docs/backlog-learning.md](docs/backlog-learning.md) and [docs/backlog-scenes.md](docs/backlog-scenes.md).
+Grading quality is measured with `eval/grading/run_grading_eval.py`; see [eval/grading/README.md](eval/grading/README.md). The post-MVP roadmap is in [docs/LANGUAGE_AI_PRODUCT_ROADMAP.md](docs/LANGUAGE_AI_PRODUCT_ROADMAP.md); smaller ideas live in [docs/backlog-learning.md](docs/backlog-learning.md) and [docs/backlog-scenes.md](docs/backlog-scenes.md).
 
 ## Known limitations (Level 1)
 

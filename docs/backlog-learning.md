@@ -1,8 +1,12 @@
 # Backlog: learning features (post-MVP)
 
-Ideas raised after the Milestone D build. None of these is required for Level 1. They belong in MVP_DESIGN.md §12 once it is clear which come first.
+Ideas raised after the Milestone D build. None of these is required for Level 1.
+
+This file holds detail notes for smaller items. It does not set the order of work: `LANGUAGE_AI_PRODUCT_ROADMAP.md` §13 does. Each item below says where it sits against that roadmap.
 
 ## 1. Quiz history
+
+**Roadmap:** build with Daily Review v1 (L2-M2). Review results need the same list, so build one history page that shows quizzes and reviews.
 
 - List completed quizzes, newest first, with the score and XP for each.
 - Open a past quiz to see the prompts, the learner's answers, feedback and results.
@@ -10,6 +14,8 @@ Ideas raised after the Milestone D build. None of these is required for Level 1.
 - Was item 3 of the Milestone D outstanding list in MVP_DESIGN.md §11; moved here by decision.
 
 ## 2. Corrected sentences and extra examples in feedback
+
+**Roadmap:** the corrected sentence is a candidate for Daily Review v1 results (L2-M2), decision pending in `LEVEL2_RECAP_REVIEW_PLAN.md` §4. Example sentences are unscheduled.
 
 Right now feedback is one or two sentences. Two additions:
 
@@ -34,7 +40,11 @@ Spanish needs tense work: the same verb changes form across the present, preteri
 
 **Depends on:** a vocabulary bank (a per-word record that persists across sessions). That is not in Level 1, and it is the first thing to design.
 
+**Roadmap:** the vocabulary bank is the personal dictionary in L2-M3. This item follows it.
+
 ## 4. Edit and delete study sessions
+
+**Roadmap:** unscheduled. The Daily Recap (L2-M1) reads study sessions, so the deletion rule below must be decided before deletion is built.
 
 Study sessions cannot be changed or removed today.
 

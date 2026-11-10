@@ -261,6 +261,8 @@ A new user can start one compose project, sign in securely, record a study sessi
 
 Detailed notes for the learning features are in `docs/backlog-learning.md`: quiz history, corrected sentences and example sentences in feedback, per-word tense tables (after a vocabulary bank), and editing or deleting study sessions (which needs an XP rule first). Scene theming is in `docs/backlog-scenes.md`.
 
+The order of post-MVP work is set in `docs/LANGUAGE_AI_PRODUCT_ROADMAP.md` §13. The first Level 2 milestones are Daily Recap and Daily Review, started after the Level 1 release. The lists below are the original backlog and do not set an order.
+
 - **Level 2:** LanguageTool/model disagreement detection and review (a checker signal and agreement flag on `concept_evidence`); concept-by-modality analytics; exposure vs assisted/independent assessment; targeted review; spaced repetition/Anki export; more refined HIT/PARTIAL/MISS feedback; textbook curriculum ingestion.
 - **Later:** Placement assessments; boss battles with reusable randomized scenarios and defined rubrics; controlled promotion attempts; remediation paths; speech/listening interaction; hesitation tracking with accessibility safeguards; advanced CEFR-aligned profiles; other languages; optional multi-user capabilities.
 
