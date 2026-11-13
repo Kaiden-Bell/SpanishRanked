@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from datetime import datetime, timezone
 
@@ -5,11 +6,28 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import db, progression
 from .deps import CurrentUser, get_db, ready_user
+from .lexicon import bank
 from .schemas import AwardOut, StudySessionCreated, StudySessionIn, StudySessionOut, StudySessionPage, normalize_token
 
 router = APIRouter(prefix="/api/study-sessions", tags=["study-sessions"])
 
 TERM_CATEGORY = "VOCABULARY"
+log = logging.getLogger(__name__)
+
+
+def _add_to_word_bank(conn: sqlite3.Connection, verbs, user_id: int, terms: list[tuple[int, str]], now: str,
+                      words_only: set[str] = frozenset()) -> None:
+    """Inside the session's transaction, but in a savepoint: a word-bank bug must never lose the
+    session. Anything skipped here is picked up by the startup backfill."""
+    conn.execute("SAVEPOINT word_bank")
+    try:
+        for concept_id, text in terms:
+            bank.ingest_term(conn, verbs, user_id, concept_id, text, now,
+                             keep_phrase=normalize_token(text) not in words_only)
+    except Exception:
+        conn.execute("ROLLBACK TO word_bank")
+        log.exception("could not add terms to the word bank")
+    conn.execute("RELEASE word_bank")
 
 
 def _hydrate(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[StudySessionOut]:
@@ -53,6 +71,7 @@ def create_study_session(
                 body.duration_minutes, body.context_text, db.utc_timestamp(now),
             ),
         ).lastrowid
+        typed: list[tuple[int, str]] = []
         for term in body.terms:
             conn.execute(
                 "INSERT OR IGNORE INTO concepts (language_code, token, category) VALUES (?, ?, ?)",
@@ -66,6 +85,9 @@ def create_study_session(
                 "INSERT INTO study_terms (study_session_id, concept_id, original_text) VALUES (?, ?, ?)",
                 (session_id, concept_id, term),
             )
+            typed.append((concept_id, term))
+        _add_to_word_bank(conn, request.app.state.verbs, user.id, typed, db.utc_timestamp(now),
+                          {normalize_token(w) for w in body.words_only})
         for sentence in body.sentences:
             conn.execute(
                 "INSERT INTO study_sentences (study_session_id, sentence_text) VALUES (?, ?)",
@@ -75,6 +97,7 @@ def create_study_session(
             conn, user.id, "STUDY_SESSION", session_id,
             progression.session_base_xp(body.duration_minutes), now, request.app.state.settings.tz,
         )
+    request.app.state.enricher.kick()
     row = conn.execute(f"SELECT {_COLUMNS} FROM study_sessions WHERE id = ?", (session_id,)).fetchone()
     created = _hydrate(conn, [row])[0]
     return StudySessionCreated(**created.model_dump(), award=AwardOut(**vars(award)))
@@ -104,3 +127,25 @@ def get_study_session(session_id: int, user: CurrentUser = Depends(ready_user), 
     if row is None:
         raise HTTPException(404, "Study session not found.")
     return _hydrate(conn, [row])[0]
+
+
+@router.delete("/{session_id}")
+def delete_study_session(session_id: int, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
+    """Delete a session logged by mistake: its terms, sentences, the words only it added, and the XP it
+    earned, so total XP and that day's streak read as if it was never logged. Quiz results stay: they
+    were earned answering real questions. Ranks won in boss battles are kept."""
+    row = conn.execute("SELECT id FROM study_sessions WHERE id = ? AND user_id = ?", (session_id, user.id)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Study session not found.")
+    with conn:
+        concepts = [r[0] for r in conn.execute(
+            "SELECT DISTINCT concept_id FROM study_terms WHERE study_session_id = ?", (session_id,))]
+        xp = conn.execute(
+            "SELECT COALESCE(SUM(awarded_xp), 0) FROM xp_events WHERE user_id = ? AND source_type = 'STUDY_SESSION'"
+            " AND source_id = ?", (user.id, session_id)).fetchone()[0]
+        conn.execute("DELETE FROM xp_events WHERE user_id = ? AND source_type = 'STUDY_SESSION' AND source_id = ?",
+                     (user.id, session_id))
+        conn.execute("DELETE FROM concept_evidence WHERE study_session_id = ?", (session_id,))
+        conn.execute("DELETE FROM study_sessions WHERE id = ?", (session_id,))  # terms and sentences cascade
+        words = bank.forget_terms(conn, user.id, concepts)
+    return {"deleted": session_id, "xp_removed": xp, "entries_removed": words}

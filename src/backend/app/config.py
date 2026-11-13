@@ -22,6 +22,14 @@ class Settings:
     languagetool_timeout: float = 3.0
     # Generous because the target homelab has no GPU; a single graded answer takes several seconds.
     model_timeout: float = 120.0
+    # Word data (docs/ROADMAP.md Phase 1). The verb tables are generated at build time
+    # (scripts/build_verb_data.py). Online lookups send only the looked-up Spanish word or phrase to
+    # Wiktionary, Tatoeba and MyMemory; off by default here so tests never touch the network, on by
+    # default in from_env().
+    verb_data_path: Path = Path(__file__).resolve().parents[1] / "data" / "verbs.db"
+    online_lookups: bool = False
+    lookup_timeout: float = 4.0
+    lookup_contact: str = ""  # URL or email for the User-Agent of online lookups (Wikimedia policy)
 
     @property
     def tz(self) -> ZoneInfo:
@@ -54,4 +62,8 @@ class Settings:
             model_name=os.environ.get("LANGUAGEAI_MODEL") or "qwen2.5:7b",
             languagetool_timeout=float(os.environ.get("LANGUAGEAI_LANGUAGETOOL_TIMEOUT", 3.0)),
             model_timeout=float(os.environ.get("LANGUAGEAI_MODEL_TIMEOUT", 120.0)),
+            verb_data_path=Path(os.environ.get("LANGUAGEAI_VERB_DATA") or cls.verb_data_path),
+            online_lookups=os.environ.get("LANGUAGEAI_ONLINE_LOOKUPS", "1") not in ("0", "false", ""),
+            lookup_timeout=float(os.environ.get("LANGUAGEAI_LOOKUP_TIMEOUT", 4.0)),
+            lookup_contact=os.environ.get("LANGUAGEAI_LOOKUP_CONTACT", ""),
         )

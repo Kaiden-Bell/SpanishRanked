@@ -1,3 +1,6 @@
+import importlib.util
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,9 +20,27 @@ def cheap_password_hashing(monkeypatch):
     monkeypatch.setattr(security, "_N", 2**4)
 
 
+# A small, fixed verb set keeps tests fast and independent of a locally built full database.
+TEST_VERBS = (
+    "extrañar,hablar,ir,ser,decir,ver,querer,gustar,casar,comer,vivir,poder,viajar,tener,estar,hacer,"
+    "necesitar,llegar,salir,volver,dormir,pensar,jugar,escribir,leer,trabajar,cantar,bailar,buscar,llamar"
+)
+
+
+@pytest.fixture(scope="session")
+def verb_data_path(tmp_path_factory):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_verb_data.py"
+    spec = importlib.util.spec_from_file_location("build_verb_data", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    out = tmp_path_factory.mktemp("verbs") / "verbs.db"
+    module.build(out, TEST_VERBS.split(","))
+    return out
+
+
 @pytest.fixture
-def settings(tmp_path):
-    return Settings(data_dir=tmp_path / "data", frontend_dist=tmp_path / "no-dist")
+def settings(tmp_path, verb_data_path):
+    return Settings(data_dir=tmp_path / "data", frontend_dist=tmp_path / "no-dist", verb_data_path=verb_data_path)
 
 
 def set_owner_password(settings, password, must_change=True):

@@ -39,7 +39,7 @@ def test_original_text_is_preserved_and_concepts_are_shared(authed, raw_db):
     authed.post("/api/study-sessions", json=payload(terms=["PODER", "comer", "el  tren"]))
     originals = [r[0] for r in raw_db.execute("SELECT original_text FROM study_terms ORDER BY id")]
     assert originals[0] == "Poder" and originals[3] == "PODER"  # as typed (trimmed), not normalised
-    tokens = [r[0] for r in raw_db.execute("SELECT token FROM concepts ORDER BY id")]
+    tokens = [r[0] for r in raw_db.execute("SELECT token FROM concepts WHERE category = 'VOCABULARY' ORDER BY id")]
     assert tokens.count("poder") == 1
     assert "el tren" in tokens  # inner whitespace collapsed
     assert len(tokens) == 5
@@ -52,7 +52,7 @@ INVALID = {
     "too many sentences": {"sentences": ["Uno.", "Dos.", "Tres.", "Cuatro."]},
     "blank term": {"terms": ["poder", "   ", "viajar"]},
     "duplicate terms": {"terms": ["Poder", "poder", "viajar"]},
-    "overlong term": {"terms": ["x" * 101, "b", "c"]},
+    "overlong term": {"terms": ["x" * 201, "b", "c"]},
     "overlong sentence": {"sentences": ["x" * 301, "ok."]},
     "empty context": {"context_text": "   "},
     "overlong context": {"context_text": "x" * 2001},
