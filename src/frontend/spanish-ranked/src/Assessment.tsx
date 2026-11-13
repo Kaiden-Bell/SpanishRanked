@@ -1,128 +1,154 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, type Assessment as AssessmentData, type Outcome } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { api, ApiError, type Assessment as AssessmentData, type Outcome, type QuizFocus } from './api'
+import { OUTCOME_LABEL, SKILL_LABEL } from './labels'
+import Question from './Question'
+import { useSpanishVoice } from './speech'
 
-type Props = { onStudy: () => void; onDone: () => void }
+const FOCUS: { value: QuizFocus; label: string; hint: string }[] = [
+  { value: 'MIXED', label: 'Mixed', hint: 'Meanings, conjugations, sentences and listening' },
+  { value: 'VOCABULARY', label: 'Vocabulary', hint: 'What words mean, both ways' },
+  { value: 'GRAMMAR', label: 'Grammar', hint: 'Who and when, conjugating, word order' },
+  { value: 'READING', label: 'Reading', hint: 'Understanding real sentences' },
+  { value: 'LISTENING', label: 'Listening', hint: 'Hear it, pick it, type it' },
+  { value: 'WRITING', label: 'Writing', hint: 'Typed answers and one free sentence' },
+  { value: 'SENTENCES', label: 'Sentence practice', hint: 'Write your own sentences; the local model grades them' },
+]
 
-const OUTCOME_LABEL: Record<Outcome, string> = { HIT: 'Correct', PARTIAL: 'Partly right', MISS: 'Missed' }
-
-function OutcomeRow({ outcome, concept }: { outcome: Outcome; concept: string }) {
-  return (
-    <li className={`outcome ${outcome.toLowerCase()}`}>
-      <span lang="es">{concept}</span>
-      <span>{OUTCOME_LABEL[outcome]}</span>
-    </li>
-  )
+function OutcomePill({ outcome }: { outcome: Outcome }) {
+  return <span className={`outcome ${outcome.toLowerCase()}`}>{OUTCOME_LABEL[outcome]}</span>
 }
 
-export default function Assessment({ onStudy, onDone }: Props) {
-  const [quiz, setQuiz] = useState<AssessmentData | null>(null)
-  const [answers, setAnswers] = useState<Record<number, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'generating' | 'grading' | null>(null)
-  const [error, setError] = useState<{ message: string; needsStudy?: boolean } | null>(null)
-
-  // If the latest attempt was submitted but never graded (model was down), pick it up so its answers
-  // are not stranded: the learner can retry grading from here.
-  useEffect(() => {
-    const controller = new AbortController()
-    api
-      .listAssessments(0, 1, controller.signal)
-      .then(async (page) => {
-        if (page.items[0]?.status === 'SUBMITTED') setQuiz(await api.getAssessment(page.items[0].id, controller.signal))
-      })
-      .catch(() => {})
-      .finally(() => !controller.signal.aborted && setLoading(false))
-    return () => controller.abort()
-  }, [])
-
-  const fail = (err: unknown, fallback: string) =>
-    setError({ message: err instanceof ApiError ? err.message : fallback, needsStudy: err instanceof ApiError && err.status === 409 })
-
-  async function generate() {
-    setBusy('generating')
-    setError(null)
-    try {
-      setQuiz(await api.createAssessment())
-      setAnswers({})
-    } catch (err) {
-      fail(err, 'Could not create a quiz.')
-    }
-    setBusy(null)
+function awardLine(quiz: AssessmentData) {
+  const award = quiz.award
+  if (!award) return null
+  if (award.awarded_xp > 0) return <>+{award.awarded_xp} XP{award.capped && ' (today’s limit reached)'}</>
+  if (award.base_xp === 0 && (quiz.correct ?? 0) > 0) {
+    return quiz.kind === 'WARMUP' ? 'Only the first warm-up of the day earns XP. It still counts toward your streak.' : 'This repeated a quiz you already took, so it earned no XP.'
   }
+  return award.capped ? 'You have reached today’s XP limit for this.' : 'No XP this time.'
+}
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!quiz) return
-    setBusy('grading')
+type RunnerProps = {
+  quiz: AssessmentData
+  onChange: (q: AssessmentData) => void
+  onDone: () => void
+  onAgain?: () => void
+  onOpenWord?: (entryId: number) => void
+  title?: string
+}
+
+/** Answers one question at a time: code-checked questions show their result straight away. */
+export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title = 'Quiz' }: RunnerProps) {
+  const { speak } = useSpanishVoice()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reviewing, setReviewing] = useState<number | null>(null) // item whose feedback is showing
+  const nextRef = useRef<HTMLButtonElement>(null)
+
+  const total = quiz.items.length
+  const pendingIndex = quiz.items.findIndex((i) => i.response_text === null)
+  const shown = reviewing !== null ? quiz.items.find((i) => i.id === reviewing) : null
+
+  useEffect(() => {
+    if (shown) nextRef.current?.focus()
+  }, [shown])
+
+  async function answer(text: string) {
+    const item = quiz.items[pendingIndex]
+    setBusy(true)
     setError(null)
     try {
-      setQuiz(await api.submitAssessment(quiz.id, quiz.items.map((i) => ({ item_id: i.id, text: (answers[i.id] ?? '').trim() }))))
+      const updated = await api.answerItem(quiz.id, item.id, text)
+      onChange(updated)
+      if (updated.status === 'GENERATED' || item.item_type !== 'WRITE') setReviewing(item.id)
     } catch (err) {
-      // A repeat submit means the first one went through: show what is saved instead of an error.
-      if (err instanceof ApiError && err.status === 409) setQuiz(await api.getAssessment(quiz.id).catch(() => quiz))
-      else fail(err, 'Could not submit your answers.')
+      if (err instanceof ApiError && err.status === 409) onChange(await api.getAssessment(quiz.id).catch(() => quiz))
+      else setError(err instanceof ApiError ? err.message : 'Could not save your answer.')
     }
-    setBusy(null)
+    setBusy(false)
   }
 
   async function retry() {
-    if (!quiz) return
-    setBusy('grading')
+    setBusy(true)
     setError(null)
     try {
-      setQuiz(await api.gradeAssessment(quiz.id))
+      onChange(await api.gradeAssessment(quiz.id))
     } catch (err) {
-      fail(err, 'Could not grade the quiz.')
+      setError(err instanceof ApiError ? err.message : 'Could not grade the quiz.')
     }
-    setBusy(null)
+    setBusy(false)
   }
 
-  if (loading) return <p className="status">Loading…</p>
+  const errorBox = error && <p className="error" role="alert">{error}</p>
 
-  const errorBox = error && (
-    <div className="error" role="alert">
-      <p>{error.message}</p>
-      {error.needsStudy && (
-        <div className="actions">
-          <button className="btn primary" onClick={onStudy}>Start Study Session</button>
-        </div>
-      )}
-    </div>
-  )
-
-  // ---------- start ----------
-  if (!quiz) {
+  // ---------- feedback for the question just answered ----------
+  if (shown) {
+    const last = pendingIndex === -1
     return (
       <>
         <header className="page-head">
-          <h1>Quick assessment</h1>
-          <p className="lede">Three short prompts built from the words you logged. Write one Spanish sentence for each.</p>
+          <p className="q-progress num">Question {quiz.items.indexOf(shown) + 1} of {total}</p>
         </header>
-        {busy === 'generating' ? (
-          <p className="status" role="status">Writing your quiz. This can take a little while on a local model…</p>
-        ) : (
+        <section className={`card q-card q-result ${shown.outcome?.toLowerCase() ?? 'saved'}`} aria-live="polite">
+          <p className="q-prompt">{shown.prompt}</p>
+          {shown.outcome ? <OutcomePill outcome={shown.outcome} /> : <span className="outcome partial">Saved</span>}
+          <p className="q-your">You answered: <span lang="es">{shown.response_text}</span></p>
+          {shown.feedback !== 'Correct.' && (
+            <p className="quiz-feedback">{shown.feedback ?? 'Your sentence is graded when you finish the quiz.'}</p>
+          )}
           <div className="actions">
-            <button className="btn primary" onClick={generate}>Start quiz</button>
+            <button ref={nextRef} className="btn primary" onClick={() => setReviewing(null)}>
+              {last ? 'See results' : 'Next question'}
+            </button>
+            {shown.entry_id && onOpenWord && shown.outcome && shown.outcome !== 'HIT' && (
+              <button className="btn ghost" onClick={() => onOpenWord(shown.entry_id!)}>Open the word</button>
+            )}
           </div>
-        )}
-        {errorBox}
+        </section>
       </>
     )
   }
 
-  // ---------- answers saved, grading pending ----------
+  // ---------- answering ----------
+  if (quiz.status === 'GENERATED' && pendingIndex >= 0) {
+    const item = quiz.items[pendingIndex]
+    return (
+      <>
+        <header className="page-head">
+          <p className="q-progress num">
+            {title} · Question {pendingIndex + 1} of {total}
+            <span className="q-skill">
+              {item.stage ? `${item.stage.charAt(0) + item.stage.slice(1).toLowerCase()} stage` : SKILL_LABEL[item.skill] ?? item.skill}
+            </span>
+          </p>
+          <div className="q-steps" aria-hidden="true">
+            {quiz.items.map((i, k) => (
+              <span key={i.id} className={`q-step ${i.outcome?.toLowerCase() ?? (i.response_text !== null ? 'saved' : k === pendingIndex ? 'now' : '')}`} />
+            ))}
+          </div>
+        </header>
+        <section className="card q-card">
+          <Question key={item.id} item={item} busy={busy} speak={speak} onAnswer={answer} />
+          {busy && item.item_type === 'WRITE' && pendingIndex === total - 1 && (
+            <p className="status" role="status">Grading your sentence. The local model can take a little while…</p>
+          )}
+          {errorBox}
+        </section>
+      </>
+    )
+  }
+
+  // ---------- answers saved, grading pending (the model was down) ----------
   if (quiz.status === 'SUBMITTED') {
     return (
       <>
         <header className="page-head">
-          <h1>{busy === 'grading' ? 'Grading your answers…' : 'Grading is pending'}</h1>
+          <h1>{busy ? 'Grading your answers…' : 'Grading is pending'}</h1>
           <p className="lede">
-            {busy === 'grading'
-              ? 'The local model is reading your sentences. This can take a minute.'
-              : 'Your answers are saved. No XP is awarded until the quiz has been graded.'}
+            {busy ? 'The local model is reading your sentences.' : 'Your answers are saved. No XP is awarded until the quiz has been graded.'}
           </p>
         </header>
-        {busy !== 'grading' && (
+        {!busy && (
           <>
             {quiz.grading_error && <p className="error" role="alert">{quiz.grading_error}</p>}
             <div className="actions">
@@ -136,87 +162,121 @@ export default function Assessment({ onStudy, onDone }: Props) {
     )
   }
 
-  // ---------- result ----------
-  if (quiz.status === 'GRADED') {
-    const total = quiz.items.length
-    const award = quiz.award
-    return (
-      <>
-        <header className="page-head">
-          <h1>
-            {quiz.correct} of {total} correct
-          </h1>
-          <p className="lede num">
-            {award && award.awarded_xp > 0 && <>+{award.awarded_xp} XP{award.capped && ' (today’s quiz XP limit reached)'}</>}
-            {award && award.awarded_xp === 0 && (award.base_xp === 0 && (quiz.correct ?? 0) > 0
-              ? 'This quiz repeated one you already took, so it earned no XP.'
-              : award.capped ? 'You have reached today’s quiz XP limit.' : 'No XP this time.')}
-          </p>
-        </header>
-        {quiz.grammar_hints_unavailable && (
-          <p className="notice" role="status">
-            The grammar checker was unavailable for this quiz, so it was graded without its hints.
-          </p>
-        )}
-        <ol className="quiz-list">
-          {quiz.items.map((item) => (
-            <li className="card quiz-item" key={item.id}>
-              <p className="quiz-prompt">{item.prompt}</p>
-              <blockquote className="quiz-answer" lang="es">{item.response_text}</blockquote>
-              <ul className="outcomes" aria-label="Results">
-                {item.evidence.map((e) => <OutcomeRow key={e.concept_token} outcome={e.outcome} concept={e.concept_token} />)}
-              </ul>
-              {item.feedback && <p className="quiz-feedback">{item.feedback}</p>}
-            </li>
-          ))}
-        </ol>
-        <div className="actions">
-          <button className="btn primary" onClick={onDone}>Back to dashboard</button>
-          <button className="btn" onClick={() => { setQuiz(null); setAnswers({}) }}>Take another</button>
-        </div>
-      </>
-    )
-  }
-
-  // ---------- answering ----------
-  const ready = quiz.items.every((i) => (answers[i.id] ?? '').trim().length > 0)
+  // ---------- results ----------
   return (
     <>
       <header className="page-head">
-        <h1>Quick assessment</h1>
-        <p className="lede">Write one Spanish sentence for each prompt, using the words shown. Answer from memory.</p>
+        <h1>{quiz.correct} of {total} correct</h1>
+        <p className="lede num">{awardLine(quiz)}</p>
       </header>
-      <form className="form quiz-form" onSubmit={submit}>
-        <ol className="quiz-list">
-          {quiz.items.map((item) => (
-            <li className="card quiz-item" key={item.id}>
-              <label className="field">
-                <span className="quiz-prompt">{item.prompt}</span>
-                <ul className="tags" aria-label="Use these words">
-                  {item.concepts.map((c) => <li key={c} lang="es">{c}</li>)}
-                </ul>
-                <textarea
-                  rows={2}
-                  maxLength={300}
-                  lang="es"
-                  value={answers[item.id] ?? ''}
-                  onChange={(e) => setAnswers({ ...answers, [item.id]: e.target.value })}
-                  disabled={busy === 'grading'}
-                />
-              </label>
-            </li>
-          ))}
-        </ol>
-        {busy === 'grading' && (
-          <p className="status" role="status">Grading your answers. The local model can take a minute…</p>
+      {quiz.grammar_hints_unavailable && (
+        <p className="notice" role="status">The grammar checker was unavailable, so your sentences were graded without its hints.</p>
+      )}
+      <ol className="quiz-list">
+        {quiz.items.map((item) => (
+          <li className="card quiz-item" key={item.id}>
+            <div className="quiz-item-head">
+              <span className="cap">{SKILL_LABEL[item.skill] ?? item.skill}</span>
+              {item.outcome && <OutcomePill outcome={item.outcome} />}
+            </div>
+            <p className="quiz-prompt">{item.prompt}</p>
+            {item.payload.spanish && <p className="q-spanish small" lang="es">{item.payload.spanish}</p>}
+            {item.payload.cloze && (
+              <p className="q-spanish small" lang="es">{item.payload.cloze.before}<span className="gap">___</span>{item.payload.cloze.after}</p>
+            )}
+            <blockquote className="quiz-answer" lang="es">{item.response_text}</blockquote>
+            {item.feedback && item.feedback !== 'Correct.' && <p className="quiz-feedback">{item.feedback}</p>}
+            {item.entry_id && onOpenWord && (
+              <button className="linkish small" onClick={() => onOpenWord(item.entry_id!)}>
+                Open <span lang="es">{item.concepts[0]}</span> in Words
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="actions">
+        <button className="btn primary" onClick={onDone}>Back to dashboard</button>
+        {onAgain && <button className="btn" onClick={onAgain}>Another quiz</button>}
+      </div>
+    </>
+  )
+}
+
+type Props = { onStudy: () => void; onDone: () => void; onOpenWord: (entryId: number) => void }
+
+export default function Assessment({ onStudy, onDone, onOpenWord }: Props) {
+  const voice = useSpanishVoice()
+  const [quiz, setQuiz] = useState<AssessmentData | null>(null)
+  const [focus, setFocus] = useState<QuizFocus>('MIXED')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<{ message: string; needsStudy?: boolean } | null>(null)
+
+  // A quiz whose answers were saved but never graded (the model was down) is picked up again here.
+  useEffect(() => {
+    const controller = new AbortController()
+    api
+      .listAssessments(0, 1, controller.signal)
+      .then(async (page) => {
+        if (page.items[0]?.status === 'SUBMITTED') setQuiz(await api.getAssessment(page.items[0].id, controller.signal))
+      })
+      .catch(() => {})
+      .finally(() => !controller.signal.aborted && setLoading(false))
+    return () => controller.abort()
+  }, [])
+
+  async function start() {
+    setBusy(true)
+    setError(null)
+    try {
+      setQuiz(await api.createAssessment({ focus, listening: voice.available }))
+    } catch (err) {
+      setError({
+        message: err instanceof ApiError ? err.message : 'Could not create a quiz.',
+        needsStudy: err instanceof ApiError && err.status === 409 && err.message.includes('study session'),
+      })
+    }
+    setBusy(false)
+  }
+
+  if (loading) return <p className="status">Loading…</p>
+  if (quiz) {
+    return <QuizRunner quiz={quiz} onChange={setQuiz} onDone={onDone} onOpenWord={onOpenWord}
+      onAgain={() => setQuiz(null)} />
+  }
+
+  const chosen = FOCUS.find((f) => f.value === focus)!
+  return (
+    <>
+      <header className="page-head">
+        <h1>Quiz</h1>
+        <p className="lede">Five short questions from your word bank. Most are checked instantly; the words you miss come back sooner.</p>
+      </header>
+      <div className="form">
+        <label className="field">
+          <span>Practise</span>
+          <select value={focus} onChange={(e) => setFocus(e.target.value as QuizFocus)}>
+            {FOCUS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        </label>
+        <p className="hint">{chosen.hint}.</p>
+        {voice.checked && !voice.available && (
+          <p className="hint">This browser has no Spanish voice, so quizzes here skip listening questions.</p>
         )}
-        {errorBox}
         <div className="actions">
-          <button className="btn primary" type="submit" disabled={!ready || busy === 'grading'}>
-            {busy === 'grading' ? 'Grading…' : 'Submit answers'}
-          </button>
+          <button className="btn primary" onClick={start} disabled={busy}>{busy ? 'Building your quiz…' : 'Start quiz'}</button>
         </div>
-      </form>
+        {error && (
+          <div className="error" role="alert">
+            <p>{error.message}</p>
+            {error.needsStudy && (
+              <div className="actions">
+                <button className="btn primary" onClick={onStudy}>Start Study Session</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </>
   )
 }

@@ -4,20 +4,24 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from . import progression
+from . import progression, user_settings
 from .assessment import grade as grading
-from .assessment.generate import NotEnoughMaterial, QuizGenerationError, generate_quiz
-from .clients.model import ModelUnavailable
 from .deps import CurrentUser, get_db, get_grammar, get_model, ready_user
+from .practice import answer as answering
+from .practice.compose import NeedsModel, NotEnoughMaterial, compose
 from .schemas import (
+    AnswerIn,
     AssessmentItemOut,
     AssessmentOut,
     AssessmentPage,
     AssessmentSummary,
     AwardOut,
+    CreateAssessmentIn,
     EvidenceOut,
     SubmitIn,
 )
+
+_WORST = ("MISS", "PARTIAL", "HIT")
 
 router = APIRouter(prefix="/api/assessments", tags=["assessments"])
 
@@ -28,21 +32,19 @@ def _correct_count(items: list[AssessmentItemOut]) -> int:
 
 def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int) -> AssessmentOut:
     row = conn.execute(
-        "SELECT id, status, created_at, submitted_at, graded_at, grading_error FROM assessments"
+        "SELECT id, kind, focus, status, created_at, submitted_at, graded_at, grading_error FROM assessments"
         " WHERE id = ? AND user_id = ?",
         (assessment_id, user_id),
     ).fetchone()
     if row is None:
         raise HTTPException(404, "Quiz not found.")
     items, hints_missing = [], False
-    for r in conn.execute(
-        "SELECT id, prompt, expected_criteria_json, response_text, feedback_json, checker_findings_json"
-        " FROM assessment_items WHERE assessment_id = ? ORDER BY id",
-        (assessment_id,),
-    ):
+    for r in conn.execute("SELECT * FROM assessment_items WHERE assessment_id = ? ORDER BY id", (assessment_id,)):
         feedback = json.loads(r["feedback_json"]) if r["feedback_json"] else None
         if r["checker_findings_json"] and json.loads(r["checker_findings_json"]).get("status") != "ok":
             hints_missing = True
+        evidence = [EvidenceOut(**e) for e in feedback["evidence"]] if feedback else []
+        outcomes = {e.outcome for e in evidence}
         items.append(
             AssessmentItemOut(
                 id=r["id"],
@@ -50,13 +52,21 @@ def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int) -> Assessm
                 concepts=[c["token"] for c in json.loads(r["expected_criteria_json"])["concepts"]],
                 response_text=r["response_text"],
                 feedback=feedback["feedback"] if feedback else None,
-                evidence=[EvidenceOut(**e) for e in feedback["evidence"]] if feedback else [],
+                evidence=evidence,
+                item_type=r["item_type"], modality=r["modality"], skill=r["skill"], stage=r["stage"],
+                payload=json.loads(r["payload_json"] or "{}"),
+                entry_id=r["bank_entry_id"],
+                answer=feedback.get("answer") if feedback else None,
+                outcome=next((o for o in _WORST if o in outcomes), None),
             )
         )
     graded = row["status"] == "GRADED"
-    award = progression.existing_award(conn, user_id, "ASSESSMENT", assessment_id) if graded else None
+    source = grading.xp_source(row["kind"])
+    award = progression.existing_award(conn, user_id, source, assessment_id) if graded else None
     return AssessmentOut(
         id=row["id"],
+        kind=row["kind"],
+        focus=row["focus"],
         status=row["status"],
         created_at=row["created_at"],
         submitted_at=row["submitted_at"],
@@ -71,16 +81,25 @@ def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int) -> Assessm
 
 @router.post("", status_code=201, response_model=AssessmentOut)
 def create_assessment(
-    user: CurrentUser = Depends(ready_user), conn=Depends(get_db), model=Depends(get_model)
+    request: Request,
+    body: CreateAssessmentIn | None = None,
+    user: CurrentUser = Depends(ready_user),
+    conn=Depends(get_db),
+    model=Depends(get_model),
 ):
+    """Built from the word bank by code, instantly. The model is only asked whether it is up, to decide
+    whether a free-sentence question can be included."""
+    body = body or CreateAssessmentIn()
+    prefs = user_settings.load(conn, user.id)
     try:
-        assessment_id = generate_quiz(conn, user.id, model)
+        assessment_id = compose(
+            conn, request.app.state.verbs, user.id, focus=body.focus, listening=body.listening and prefs.listening,
+            model_ok=model.status() == "ok", n=None if body.focus == "SENTENCES" else prefs.quiz_items,
+        )
     except NotEnoughMaterial as exc:
         raise HTTPException(409, str(exc))
-    except ModelUnavailable:
-        raise HTTPException(503, "Quizzes are unavailable right now. You can still log study sessions.")
-    except QuizGenerationError:
-        raise HTTPException(502, "The model did not produce a usable quiz. Please try again.")
+    except NeedsModel as exc:
+        raise HTTPException(503, str(exc))
     return _load(conn, user.id, assessment_id)
 
 
@@ -107,7 +126,7 @@ def list_assessments(
         a = _load(conn, user.id, assessment_id)
         summaries.append(
             AssessmentSummary(
-                id=a.id, status=a.status, created_at=a.created_at, graded_at=a.graded_at,
+                id=a.id, kind=a.kind, status=a.status, created_at=a.created_at, graded_at=a.graded_at,
                 correct=a.correct, total=len(a.items),
             )
         )
@@ -153,6 +172,31 @@ def submit_assessment(
     except grading.WrongState as exc:
         raise HTTPException(409, str(exc))
     return _grade(request, conn, user, assessment_id, model, grammar)
+
+
+@router.post("/{assessment_id}/answers", response_model=AssessmentOut)
+def answer_one(
+    assessment_id: int,
+    body: AnswerIn,
+    request: Request,
+    user: CurrentUser = Depends(ready_user),
+    conn=Depends(get_db),
+    model=Depends(get_model),
+    grammar=Depends(get_grammar),
+):
+    """Answer one question. Code-checked questions come back checked at once; after the last answer
+    the quiz is submitted and graded (free sentences by the model)."""
+    try:
+        complete = answering.answer_item(
+            conn, user.id, assessment_id, body.item_id, body.text, datetime.now(timezone.utc), grading.fingerprint
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except answering.Closed as exc:
+        raise HTTPException(409, str(exc))
+    if complete:
+        return _grade(request, conn, user, assessment_id, model, grammar)
+    return _load(conn, user.id, assessment_id)
 
 
 @router.post("/{assessment_id}/grade", response_model=AssessmentOut)

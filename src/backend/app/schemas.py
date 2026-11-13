@@ -4,7 +4,7 @@ import re
 import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 ACTIVITY_TYPES = ("READING", "LISTENING", "WATCHING", "WRITING", "SPEAKING", "FLASHCARDS", "CLASS", "OTHER")
 
@@ -35,7 +35,10 @@ class StudySessionIn(BaseModel):
     activity_type: Literal["READING", "LISTENING", "WATCHING", "WRITING", "SPEAKING", "FLASHCARDS", "CLASS", "OTHER"]
     duration_minutes: int = Field(ge=1, le=1440, strict=True)
     context_text: _text(2000)
-    terms: list[_text(100)] = Field(min_length=3, max_length=5)
+    # A term may carry its own meaning: "te extraño - I miss you". 200 leaves room for both halves.
+    terms: list[_text(200)] = Field(min_length=3, max_length=5)
+    # Multi-word terms to save as separate words only, without a phrase entry.
+    words_only: list[_text(200)] = Field(default_factory=list, max_length=5)
     sentences: list[_text(300)] = Field(min_length=2, max_length=3)
 
     @field_validator("context_text")
@@ -49,6 +52,12 @@ class StudySessionIn(BaseModel):
         for value in values:
             _no_control_chars(value)
         return values
+
+    @model_validator(mode="after")
+    def _words_only_are_terms(self):
+        if not {normalize_token(w) for w in self.words_only} <= {normalize_token(t) for t in self.terms}:
+            raise ValueError("words_only must list terms from this session")
+        return self
 
     @field_validator("terms")
     @classmethod
@@ -104,13 +113,24 @@ class TodayOut(BaseModel):
     study_xp_cap: int
 
 
+class BossOut(BaseModel):
+    # The rank whose boss is open (its XP is reached but it isn't passed yet), or None.
+    rank: str | None
+    status: Literal["NONE", "READY", "IN_PROGRESS", "COOLDOWN", "NEEDS_WORDS"]
+    cooldown_until: str | None
+    words_needed: int
+    last_result: dict | None
+
+
 class ProgressOut(BaseModel):
     total_xp: int
     rank: RankOut
     next_rank: RankOut | None
+    # 0 while the next rank's boss is waiting: the XP is there, the battle isn't won yet.
     xp_to_next: int | None
     streak: StreakOut
     today: TodayOut
+    boss: BossOut
 
 
 # ---------- assessments (MVP_DESIGN.md §8) ----------
@@ -126,6 +146,16 @@ class AnswerIn(BaseModel):
     @classmethod
     def _text_clean(cls, value: str) -> str:
         return _no_control_chars(value)
+
+
+class CreateAssessmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # MIXED: varied questions, at most one free sentence. SENTENCES: free sentences only (the model
+    # grades them). The others practise one skill.
+    focus: Literal["MIXED", "SENTENCES", "READING", "LISTENING", "WRITING", "VOCABULARY", "GRAMMAR"] = "MIXED"
+    # False when the browser has no Spanish voice: no listening questions then.
+    listening: bool = True
 
 
 class SubmitIn(BaseModel):
@@ -147,10 +177,23 @@ class AssessmentItemOut(BaseModel):
     response_text: str | None
     feedback: str | None
     evidence: list[EvidenceOut]
+    item_type: str = "WRITE"
+    modality: str = "WRITING"
+    skill: str = "WRITING"
+    stage: str | None = None
+    # What the client needs to show the question (options, tiles, a sentence with a gap, text to
+    # speak). Never the answer.
+    payload: dict = {}
+    entry_id: int | None = None
+    # Revealed once the item has been checked.
+    answer: str | None = None
+    outcome: str | None = None
 
 
 class AssessmentOut(BaseModel):
     id: int
+    kind: str = "QUICK"
+    focus: str = "SENTENCES"
     status: str
     created_at: str
     submitted_at: str | None
@@ -166,6 +209,7 @@ class AssessmentOut(BaseModel):
 
 class AssessmentSummary(BaseModel):
     id: int
+    kind: str = "QUICK"
     status: str
     created_at: str
     graded_at: str | None

@@ -8,6 +8,8 @@ scoring. The backend alone turns validated model outcomes into XP:
   change and the XP award are written in one transaction.
 * An answer is correct when the model says HIT for every target concept of its question; PARTIAL and
   MISS pay nothing. LanguageTool output never reaches scoring.
+* Only WRITE items reach the model. Every other item type (docs/ROADMAP.md Phase 2) is checked by
+  code, usually already when it was answered, and stored in the same feedback shape.
 """
 
 import hashlib
@@ -20,6 +22,8 @@ from zoneinfo import ZoneInfo
 from .. import db, progression, rules
 from ..clients.grammar import GrammarChecker
 from ..clients.model import LanguageModel, ModelUnavailable
+from ..practice.answer import evaluate
+from ..practice.select import schedule
 from ..schemas import normalize_token
 from . import concept_guidance, scrub
 
@@ -211,14 +215,17 @@ def grade_assessment(
         return GradeResult(True)
 
     items = conn.execute(
-        "SELECT id, prompt, expected_criteria_json, response_text, feedback_json, checker_findings_json"
-        " FROM assessment_items WHERE assessment_id = ? ORDER BY id",
-        (assessment_id,),
+        "SELECT * FROM assessment_items WHERE assessment_id = ? ORDER BY id", (assessment_id,)
     ).fetchall()
 
     for item in items:
         if item["feedback_json"]:
             continue  # graded on an earlier attempt
+        if item["item_type"] != "WRITE":
+            with conn:
+                conn.execute("UPDATE assessment_items SET feedback_json = ? WHERE id = ?",
+                             (json.dumps(evaluate(item, item["response_text"]), ensure_ascii=False), item["id"]))
+            continue
         concepts = [c["token"] for c in json.loads(item["expected_criteria_json"])["concepts"]]
         stored = json.loads(item["checker_findings_json"]) if item["checker_findings_json"] else None
         envelope = stored if stored and stored.get("status") == "ok" else grammar.check(item["response_text"])
@@ -247,9 +254,11 @@ def grade_assessment(
 def _finalize(conn: sqlite3.Connection, user_id: int, assessment_id: int, tz: ZoneInfo, now: datetime) -> None:
     """Evidence, status change and XP award: all or nothing."""
     items = conn.execute(
-        "SELECT id, expected_criteria_json, feedback_json FROM assessment_items WHERE assessment_id = ? ORDER BY id",
+        "SELECT id, expected_criteria_json, feedback_json, modality, bank_entry_id FROM assessment_items"
+        " WHERE assessment_id = ? ORDER BY id",
         (assessment_id,),
     ).fetchall()
+    kind = conn.execute("SELECT kind FROM assessments WHERE id = ?", (assessment_id,)).fetchone()["kind"]
     with conn:
         moved = conn.execute(
             "UPDATE assessments SET status = 'GRADED', graded_at = ?, grading_error = NULL"
@@ -265,14 +274,35 @@ def _finalize(conn: sqlite3.Connection, user_id: int, assessment_id: int, tz: Zo
             for record in evidence:
                 conn.execute(
                     "INSERT INTO concept_evidence (concept_id, assessment_item_id, modality, evidence_type,"
-                    " outcome, assistance_level) VALUES (?, ?, 'WRITING', 'ASSESSMENT', ?, 'UNKNOWN')",
-                    (ids[record["concept_token"]], item["id"], record["outcome"]),
+                    " outcome, assistance_level) VALUES (?, ?, ?, 'ASSESSMENT', ?, 'UNKNOWN')",
+                    (ids[record["concept_token"]], item["id"], item["modality"], record["outcome"]),
                 )
             correct += all(r["outcome"] == "HIT" for r in evidence)
+            if item["bank_entry_id"]:
+                worst = next((o for o in ("MISS", "PARTIAL") if any(r["outcome"] == o for r in evidence)), "HIT")
+                schedule(conn, item["bank_entry_id"], worst, now)
         repeat = conn.execute(
             "SELECT 1 FROM assessments WHERE user_id = ? AND id != ? AND status = 'GRADED'"
             " AND fingerprint = (SELECT fingerprint FROM assessments WHERE id = ?)",
             (user_id, assessment_id, assessment_id),
         ).fetchone()
-        base_xp = 0 if repeat else correct * rules.QUIZ_XP_PER_CORRECT
-        progression.award_xp(conn, user_id, "ASSESSMENT", assessment_id, base_xp, now, tz)
+        source, base_xp = xp_for(conn, user_id, assessment_id, kind, correct, len(items), now, tz)
+        progression.award_xp(conn, user_id, source, assessment_id, 0 if repeat else base_xp, now, tz)
+        if kind == "BOSS":
+            from ..practice import boss  # late import: boss builds on compose, which builds on grading's peers
+
+            boss.resolve(conn, assessment_id, now)
+
+
+def xp_source(kind: str) -> str:
+    return {"QUICK": "ASSESSMENT", "WARMUP": "WARMUP", "BOSS": "BOSS"}[kind]
+
+
+def xp_for(conn, user_id: int, assessment_id: int, kind: str, correct: int, total: int, now, tz) -> tuple[str, int]:
+    """(xp source, base XP). The rules live in rules.py; the model never decides XP."""
+    if kind == "WARMUP":
+        return "WARMUP", rules.warmup_base_xp(correct, first_today=not progression.xp_earned_count(
+            conn, user_id, "WARMUP", now.astimezone(tz).date()))
+    if kind == "BOSS":
+        return "BOSS", correct * rules.BOSS_XP_PER_CORRECT
+    return "ASSESSMENT", correct * rules.QUIZ_XP_PER_CORRECT
