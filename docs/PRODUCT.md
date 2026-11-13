@@ -17,7 +17,7 @@ Language AI turns material a learner already consumes into recorded practice and
 Level 1 succeeds when a user can complete that loop entirely on their own machine, with no account and no cloud AI provider.
 
 ## Positioning
-Learning is tracked from whatever the learner already studies, with no fixed curriculum. The backend, not the language model, owns XP, rank and streaks. Everything runs locally, with no cloud AI and no external account.
+Learning is tracked from whatever the learner already studies, with no fixed curriculum. The backend, not the language model, owns XP, rank and streaks. It is self-hosted, with no cloud AI and no external account; dictionary lookups are the only online calls.
 
 ## Operating Context
 - One Docker container: React/TypeScript frontend, Python/FastAPI backend, SQLite on a persistent volume, local text-model inference, and LanguageTool as an advisory grammar checker.
@@ -32,9 +32,9 @@ Learning is tracked from whatever the learner already studies, with no fixed cur
 - Rank is an XP-based activity rank, not a certified proficiency claim. Ladder: Pre-Learner I, II, III, then Learner I, II, III. Thresholds are provisional (see `src/backend/app/rules.py`).
 - Streaks are earned by completed study sessions or submitted assessments, never by opening the app. Missed days end the streak but never remove XP.
 - Reading, Writing, Listening and Speaking are independent skills. Level 1 only evaluates written modalities. Skills not yet assessed must say "Not yet assessed", and no CEFR level is invented.
-- Level 1 excludes boss battles, placement tests, speaking/listening assessment, audio, PDF ingestion, Anki export, multi-user accounts and cloud hosting.
+- Level 2 (docs/ROADMAP.md) added a word bank, code-built quizzes with listening through the browser's voice, a daily recap and warm-up, a real skill profile, and boss battles that gate rank-ups. Still excluded: placement tests, speaking assessment, PDF ingestion, Anki export, multi-user accounts and cloud hosting.
 - Design concepts and prototypes may preview post-MVP features (Challenges, speaking, listening) as clearly locked or future, but the shipped Level 1 app should not carry placeholders that complicate it.
-- No external API calls after installation and model provisioning.
+- Word meanings, example sentences and phrase translations are looked up online (Wiktionary, Tatoeba, MyMemory), cached locally, and can be turned off. Only the looked-up Spanish text is sent. Everything else, including conjugation and grammar analysis, is local. See `docs/ROADMAP.md`.
 
 ## Brand Commitments
 Name: Language AI. Spanish is the first language. Authority for scope and rules: `MVP_DESIGN.md`. No other brand assets or voice rules have been confirmed.

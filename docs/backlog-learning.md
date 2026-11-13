@@ -44,6 +44,9 @@ Spanish needs tense work: the same verb changes form across the present, preteri
 
 ## 4. Edit and delete study sessions
 
+> **Delete: built (Nov 13, 2026).** Decision: option (b), the XP is taken back (by removing the session's
+> ledger row), and ranks won in boss battles are kept. See `ROADMAP.md`. Editing is still open.
+
 **Roadmap:** unscheduled. The Daily Recap (L2-M1) reads study sessions, so the deletion rule below must be decided before deletion is built.
 
 Study sessions cannot be changed or removed today.

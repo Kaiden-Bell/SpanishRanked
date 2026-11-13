@@ -34,9 +34,9 @@ Dark only (`color-scheme: dark`). There is no light theme.
 
 - **Shell:** a sticky full-height left rail containing:
   - the brand: "Language AI" with "LEARN SPANISH" under it
-  - the nav: Dashboard, Study, History
+  - the nav: Dashboard, Study, Quiz, Words, History
   - a footer with "Signed in as" and Sign out
-- **Below 960px:** the rail becomes a top bar. Brand and Sign out sit on the first row, and the nav takes its own full-width row so no item is hidden.
+- **Below 960px:** the rail becomes a top bar. Brand and Sign out sit on the first row, and the nav takes its own full-width row, spread edge to edge with tighter padding, so all five items fit a 360px phone without scrolling.
 - **Content:** `.view` is capped at 76rem and has a fluid side gutter.
 - **Dashboard:** a greeting hero, then a `1.5fr / 1fr` grid:
   - first row: rank card and streak card
@@ -65,14 +65,43 @@ Dark only (`color-scheme: dark`). There is no light theme.
   - `.row2` for side-by-side fields, which stack below 760px
   - `.seg` for a two-way choice, using `aria-pressed`
 - `.bar > .fill` is driven by `--w` (0–1) and animates with scaleX only. `.empty-track` is a dashed line for a skill that hasn't been measured.
-- Quiz (`Assessment.tsx`): `.quiz-list` / `.quiz-item` cards, with the prompt in the display font and target words as `.tags`. Results use `.outcome` pills: `hit` is solid olive, `partial` is outlined, `miss` uses `--bad`. Outcomes are always labelled in words ("Correct", "Partly right", "Missed"), never by colour alone. The screen has four states: start, answering, grading (shows a wait message, because a local model can take a minute), and pending (answers saved, retry offered, no XP yet).
+- Quiz (`Assessment.tsx` → `QuizRunner`; also used by the warm-up and boss battles):
+  - **The start screen** has a "Practise" select (Mixed, Vocabulary, Grammar, Reading, Listening, Writing, Sentence practice).
+  - **Answering** shows one `.q-card` per screen, headed by `.q-progress` (count and skill, or the boss stage) and `.q-steps` segments.
+  - **Inputs** (`Question.tsx`):
+    - `.q-option` buttons for choices; clicking one answers it
+    - a text field with an `.accent-bar` (á é í ó ú ñ ü ¿ ¡); gaps render inline in `.q-cloze`
+    - `.tile` buttons for word order
+    - ▶ Play and Slowly buttons for listening
+  - **After each answer** a `.q-result` card shows the outcome pill, your answer and the explanation, with focus on Next.
+  - **Results** use `.quiz-item` cards with a skill caption, the outcome pill, the question context and a link to the word.
+  - **Outcome pills:** `hit` is solid olive, `partial` is outlined, `miss` uses `--bad`. They are always worded ("Correct", "Partly right", "Missed"), never shown by colour alone.
+- Dashboard additions:
+  - **`.recap-card`** ("Since last time") sits above the grid, with word chips (`.tag-link`) that open the word. While the warm-up is pending it holds the view's one primary button, and Start Study Session drops to outline.
+  - **The skill profile** shows real bars once a skill has 8 answers, and the Vocabulary and Grammar rows sit below a hairline.
+  - **The rank card** gains a `.boss-callout` when a boss battle is open.
+- Settings (`Settings.tsx`), opened from the Settings button next to Sign out (in the rail, or in the top bar on phones), so the main nav stays at five items. The page is a stack of cards:
+  - **Practice:** quiz and warm-up length, listening on or off, and the Spanish voice and speed. Voice and speed are saved on the device, the rest on the server.
+  - **Motion:** a `.seg` with "Follow my device" and "Always reduce".
+  - **Account:** change the password, and sign out other devices.
+  - **Reset all data:** a `.danger` card. Its `.btn.danger-btn` stays disabled until the password is entered and RESET is typed.
+  - "Always reduce" sets `data-motion="reduce"` on `<html>`, which index.css treats like `prefers-reduced-motion`.
+- Boss (`Boss.tsx`): an intro card listing the stages and the pass rules, then the runner. The result card is `.boss-result.won` / `.lost`, with a `.boss-stages` table. Every stage is labelled "Passed" or "Not yet" in words.
+- Word bank (`WordBank.tsx`):
+  - **The list** uses `.bank-row` buttons in a hairline list. Each row shows the headword in the display font, the translation (clamped to two lines), a meta line with the part of speech and the forms seen, and a `.strength` pill.
+  - **Strength pills** are always worded: "Not tested yet", "Needs practice" (`--bad` outline), "Learning", "Strong" (filled).
+  - **The detail page** is a `2fr / 1fr` `.word-grid` with:
+    - main column: the form you met (who and when), the conjugation table, and sentences
+    - side column: your translation, meanings, linked phrases or words, and your history
+  - **The conjugation table** (`.conj`) sits in a horizontally scrollable `.conj-scroll` so the page itself never scrolls sideways. Forms the learner has logged are `<mark>`ed with an olive outline. The table shows the main tenses and persons by default, with a toggle for all of them.
+  - Source attribution sits in `.foot` under the page.
 - `.notice.warn` is the dashboard banner when the model or grammar checker is offline. It is advisory: the dashboard works without it.
 - `.card` and `.panel` are translucent surfaces. `.notice` is the save confirmation, `.error` the error box, `.empty` the dashed empty state, and `.tags` and `.sentences` are used in History entries.
 
 ## Rules
 
 - No kicker or eyebrow above headings. No progress rings or sparklines. No rows of icon cards.
-- Ship no placeholders. Features that aren't built (vocabulary, challenges, per-skill progress) get no nav item or button. "Quick Assessment" is the secondary dashboard CTA now that quizzes exist.
+- Ship no placeholders. Features that aren't built (challenges, speaking) get no nav item or button. "Quick Assessment" is the secondary dashboard CTA now that quizzes exist.
 - Skills read "Not yet assessed" until there is real assessment data. Never show an invented CEFR level.
 - Rank is an activity rank, not a proficiency claim.
 - Keep the focus ring visible (2px accent). `prefers-reduced-motion` turns off all transitions and animations.
