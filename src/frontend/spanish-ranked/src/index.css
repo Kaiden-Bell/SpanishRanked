@@ -337,6 +337,15 @@ ul.error {
   }
 }
 
+/* Settings › Motion › Always reduce: the same, whatever the device says. */
+:root[data-motion='reduce'] *,
+:root[data-motion='reduce'] *::before,
+:root[data-motion='reduce'] *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
 @media (max-width: 760px) {
   .row2,
   .row3 {
