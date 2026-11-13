@@ -91,6 +91,14 @@ def xp_earned_on(conn: sqlite3.Connection, user_id: int, source_type: str, local
     ).fetchone()[0]
 
 
+def xp_earned_count(conn: sqlite3.Connection, user_id: int, source_type: str, local_date: date) -> int:
+    """How many awards of this source were recorded that day (including capped, zero-XP ones)."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM xp_events WHERE user_id = ? AND source_type = ? AND local_date = ?",
+        (user_id, source_type, local_date.isoformat()),
+    ).fetchone()[0]
+
+
 def existing_award(conn: sqlite3.Connection, user_id: int, source_type: str, source_id: int) -> Award | None:
     """The award already recorded for this action, if any."""
     row = conn.execute(
@@ -153,15 +161,21 @@ def award_missing_sessions(conn: sqlite3.Connection, tz: ZoneInfo) -> int:
 
 
 def progress(conn: sqlite3.Connection, user_id: int, now: datetime, tz: ZoneInfo) -> dict:
+    from .practice import boss  # late import: boss depends on the quiz modules, which depend on this one
+
     today = now.astimezone(tz).date()
     total = total_xp(conn, user_id)
-    (rank_min, rank_name), following = rank_for(total)
+    # The rank shown is the one held: XP reached *and* its boss passed (docs/ROADMAP.md Phase 5).
+    battle = boss.state(conn, user_id, total, now)
+    rank_min, rank_name = rules.RANKS[battle["held_index"]]
+    following = rules.RANKS[battle["held_index"] + 1] if battle["held_index"] + 1 < len(rules.RANKS) else None
     streak = streak_state(active_days(conn, user_id), today)
     return {
         "total_xp": total,
         "rank": {"name": rank_name, "min_xp": rank_min},
         "next_rank": {"name": following[1], "min_xp": following[0]} if following else None,
-        "xp_to_next": following[0] - total if following else None,
+        "xp_to_next": max(0, following[0] - total) if following else None,
+        "boss": {k: battle[k] for k in ("rank", "status", "cooldown_until", "words_needed", "last_result")},
         "streak": {
             "current": streak.current,
             "active_today": streak.active_today,
