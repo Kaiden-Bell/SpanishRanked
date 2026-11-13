@@ -8,13 +8,18 @@ import History from './History'
 import Login from './Login'
 import NewSession from './NewSession'
 import Scene from './Scene'
+import Boss from './Boss'
+import Settings from './Settings'
+import Warmup from './Warmup'
+import WordBank from './WordBank'
 
-type View = 'dashboard' | 'history' | 'new' | 'quiz'
+type View = 'dashboard' | 'history' | 'new' | 'quiz' | 'words' | 'warmup' | 'boss' | 'settings'
 
 const NAV: { view: View; label: string }[] = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'new', label: 'Study' },
   { view: 'quiz', label: 'Quiz' },
+  { view: 'words', label: 'Words' },
   { view: 'history', label: 'History' },
 ]
 
@@ -25,14 +30,21 @@ function awardMessage(a: Award): string {
   return `Session saved: +${a.awarded_xp} XP${bonus}${capped}.`
 }
 
+function applyMotion(motion: 'system' | 'reduce') {
+  if (motion === 'reduce') document.documentElement.dataset.motion = 'reduce'
+  else delete document.documentElement.dataset.motion
+}
+
 function App() {
   // undefined = still checking for an existing session, null = signed out.
   const [user, setUser] = useState<User | null | undefined>(undefined)
   const [unreachable, setUnreachable] = useState(false)
   const [view, setView] = useState<View>('dashboard')
   const [notice, setNotice] = useState<string>()
+  const [wordId, setWordId] = useState<number | null>(null)
 
   const signedOut = useCallback(() => {
+    applyMotion('system')
     setCsrfToken('')
     setUser(null)
   }, [])
@@ -62,13 +74,27 @@ function App() {
     setNotice(undefined)
   }
 
+  const openWord = (id: number) => {
+    go('words')
+    setWordId(id)
+  }
+
   function go(next: View) {
     setNotice(undefined)
+    setWordId(null)
     setView(next)
     window.scrollTo({ top: 0 })
   }
 
   const signedIn = !!user && !user.must_change_password
+
+  // Reduced motion from Settings applies on every device the learner signs in on.
+  useEffect(() => {
+    if (!signedIn) return
+    const controller = new AbortController()
+    api.settings(controller.signal).then((s) => applyMotion(s.motion)).catch(() => {})
+    return () => controller.abort()
+  }, [signedIn])
 
   let body
   if (user === undefined) body = <p className="status">Loading…</p>
@@ -84,8 +110,28 @@ function App() {
         }}
       />
     )
+  else if (view === 'words') body = <WordBank key={wordId ?? 'list'} initialId={wordId} onStudy={() => go('new')} />
   else if (view === 'history') body = <History onStart={() => go('new')} />
-  else if (view === 'quiz') body = <Assessment onStudy={() => go('new')} onDone={() => go('dashboard')} />
+  else if (view === 'quiz')
+    body = (
+      <Assessment
+        onStudy={() => go('new')}
+        onDone={() => go('dashboard')}
+        onOpenWord={openWord}
+      />
+    )
+  else if (view === 'settings')
+    body = (
+      <Settings
+        onMotion={applyMotion}
+        onReset={(message) => {
+          go('dashboard')
+          setNotice(message)
+        }}
+      />
+    )
+  else if (view === 'boss') body = <Boss onDone={() => go('dashboard')} onPractice={() => go('warmup')} onOpenWord={openWord} />
+  else if (view === 'warmup') body = <Warmup onDone={() => go('dashboard')} onStudy={() => go('new')} onOpenWord={openWord} />
   else
     body = (
       <Dashboard
@@ -94,6 +140,9 @@ function App() {
         onStart={() => go('new')}
         onQuiz={() => go('quiz')}
         onHistory={() => go('history')}
+        onWarmup={() => go('warmup')}
+        onBoss={() => go('boss')}
+        onOpenWord={openWord}
       />
     )
 
@@ -115,6 +164,7 @@ function App() {
             </nav>
             <div className="rail-foot">
               <span className="who">Signed in as {user.username}</span>
+              <button className="btn ghost" aria-current={view === 'settings' ? 'page' : undefined} onClick={() => go('settings')}>Settings</button>
               <button className="btn ghost" onClick={logout}>Sign out</button>
             </div>
           </>
