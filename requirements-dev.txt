@@ -1,2 +1,4 @@
 -r requirements.txt
 pytest==9.2.0
+# Builds the verb tables (scripts/build_verb_data.py); not needed at runtime.
+verbecc==2.1.0
