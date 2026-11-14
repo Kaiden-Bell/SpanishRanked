@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, progression
+from .assessment.worker import Grader
 from .clients.grammar import GrammarChecker, LanguageToolClient
 from .clients.model import LanguageModel, OllamaClient
 from .config import Settings
@@ -58,7 +59,9 @@ def create_app(
             announce_bootstrap(bootstrap_password)
         app.state.enricher.start()
         app.state.enricher.kick()
+        app.state.grader.start()  # also resumes quizzes queued before a restart
         yield
+        app.state.grader.stop()
         app.state.enricher.stop()
 
     app = FastAPI(title="Language AI", lifespan=lifespan)
@@ -70,6 +73,8 @@ def create_app(
         settings.online_lookups, settings.lookup_timeout, contact=settings.lookup_contact
     )
     app.state.enricher = Enricher(settings.db_path, app.state.sources, app.state.verbs, inline=enrich_inline)
+    app.state.grader = Grader(settings.db_path, app.state.model, app.state.grammar, settings.tz,
+                              inline=not settings.background_grading)
     # Guided-study lessons: the bundled packs plus any the owner added under <data dir>/packs.
     app.state.packs = content_packs.load_all(syllabus.load(), [settings.data_dir / "packs"])
 

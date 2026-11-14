@@ -3,7 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .deps import CurrentUser, get_db, ready_user
 from .lexicon import bank
@@ -20,8 +20,42 @@ class BankEntryPatch(BaseModel):
     note: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
 
 
+class BankAddIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # One word or phrase each, typed the way a study term is ("quieres", "te extraño - I miss you").
+    terms: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]] = Field(
+        min_length=1, max_length=50)
+
+
+@router.post("/bank", status_code=201)
+def add_to_bank(body: BankAddIn, request: Request, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
+    """Add words and phrases straight to the bank, outside a study session. Meanings, examples and
+    conjugations are filled in by the same background lookups as session terms. No XP."""
+    added, skipped = [], []
+    with conn:
+        for text in dict.fromkeys(body.terms):
+            result = bank.add_manual(conn, request.app.state.verbs, user.id, text)
+            (skipped if "skipped" in result else added).append(result)
+    if added:
+        request.app.state.enricher.kick()
+    return {"added": added, "skipped": skipped}
+
+
+@router.delete("/bank/{entry_id}", status_code=204)
+def remove_from_bank(entry_id: int, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
+    """Only hand-added entries; a word a study session logged belongs to that session's history."""
+    try:
+        removed = bank.remove_manual(conn, user.id, entry_id)
+    except LookupError:
+        raise HTTPException(404, "Word not found.")
+    if not removed:
+        raise HTTPException(409, "This word was logged in a study session, so it stays in your bank.")
+
+
 @router.get("/bank")
 def list_bank(
+    request: Request,
     q: str = Query("", max_length=100),
     kind: Literal["WORD", "PHRASE"] | None = None,
     sort: Literal["recent", "alpha", "weak"] = "recent",
@@ -30,7 +64,7 @@ def list_bank(
     user: CurrentUser = Depends(ready_user),
     conn=Depends(get_db),
 ):
-    total, items = bank.list_entries(conn, user.id, q, kind, sort, limit, offset)
+    total, items = bank.list_entries(conn, user.id, q, kind, sort, limit, offset, verbs=request.app.state.verbs)
     return {"total": total, "items": items, "counts": bank.counts(conn, user.id)}
 
 

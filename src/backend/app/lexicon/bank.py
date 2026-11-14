@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from .. import db
-from .analyze import TermAnalysis, WordAnalysis, analyze, tokens
+from .analyze import TermAnalysis, WordAnalysis, analyze, normalize, tokens
 from .parse import parse_term
 from .grammar_terms import CORE_TENSES, FUNCTION_GLOSS, PERSONS, TENSES, describe_form
 from .sources import ATTRIBUTION
@@ -18,6 +18,8 @@ from .verbs import VerbData
 LANGUAGE = "es"
 LEMMA_CATEGORY = "LEMMA"  # concepts owned by word entries
 TERM_CATEGORY = "VOCABULARY"  # concepts created from typed study terms (Level 1)
+MANUAL_CATEGORY = "MANUAL"  # words and phrases the learner added straight to the bank, outside a session
+_ARTICLES = frozenset("el la los las un una unos unas".split())
 
 
 # ---------------------------------------------------------------- writes
@@ -134,6 +136,54 @@ def ingest_term(conn: sqlite3.Connection, verbs: VerbData, user_id: int, concept
             _link(conn, entry_id, concept_id, "IN_PHRASE")
         ids.append(entry_id)
     return ids
+
+
+def add_manual(conn: sqlite3.Connection, verbs: VerbData, user_id: int, text: str, now: str | None = None) -> dict:
+    """A word or phrase the learner added by hand. Read exactly like a study term ("quieres", "te extraño -
+    I miss you", "phrase: ..."), so a form joins its dictionary entry (quieres -> querer). Hand-added
+    entries are linked to a MANUAL concept, which no study session owns, so deleting a session never
+    removes them. They start as new words: due now, no XP. Runs inside the caller's transaction."""
+    now = now or db.utc_timestamp()
+    parsed = parse_term(text, verbs)
+    if parsed.is_english:
+        return {"text": text, "skipped": "It reads as English, so there is no Spanish to add."}
+    newest = conn.execute("SELECT COALESCE(MAX(id), 0) FROM bank_entries WHERE user_id = ?", (user_id,)).fetchone()[0]
+    concept_id = _concept(conn, MANUAL_CATEGORY, normalize(parsed.spanish))
+    analysis = analyze(parsed.spanish, verbs)
+    # "la maleta" typed into a list of words is the word maleta, not a phrase to learn.
+    article_noun = (analysis.kind == "PHRASE" and len(analysis.content_words) == 1
+                    and all(w.is_content or w.surface in _ARTICLES for w in analysis.words))
+    ids = ingest_term(conn, verbs, user_id, concept_id, text, now, keep_phrase=not article_noun)
+    if article_noun and ids:
+        _set_meaning(conn, ids[0], parsed.meaning)
+    if not ids:
+        return {"text": text, "skipped": "Only grammar words, so there is nothing to add on its own."}
+    row = conn.execute(f"{ENTRY_SELECT} WHERE e.id = ?", (ids[0],)).fetchone()
+    return {"text": text, "entry_id": row["id"], "headword": row["headword"], "kind": row["kind"],
+            "typed": normalize(parsed.spanish), "merged": ids[0] <= newest, "words": len(ids) - 1 if row["kind"] == "PHRASE" else 0}
+
+
+def remove_manual(conn: sqlite3.Connection, user_id: int, entry_id: int) -> bool:
+    """Remove a hand-added entry (a typo, a word added by mistake). Refused (False) once a study session
+    logged it: then it belongs to that session's history. A phrase takes its words along unless something
+    else keeps them."""
+    row = get_entry_row(conn, user_id, entry_id)
+    if row is None:
+        raise LookupError("Word not found.")
+    if row["sessions_count"]:
+        return False
+    mine = "bank_entry_id IN (SELECT id FROM bank_entries WHERE user_id = ?)"
+    with conn:
+        if row["kind"] == "PHRASE":
+            owned = [row["concept_id"]] + [r[0] for r in conn.execute(
+                "SELECT b.concept_id FROM bank_entry_concepts b JOIN concepts c ON c.id = b.concept_id"
+                " WHERE b.bank_entry_id = ? AND c.category = ?", (entry_id, MANUAL_CATEGORY))]
+            for concept in owned:
+                conn.execute(f"DELETE FROM bank_entry_concepts WHERE concept_id = ? AND {mine}", (concept, user_id))
+        conn.execute("DELETE FROM bank_entries WHERE id = ?", (entry_id,))
+        conn.execute("DELETE FROM bank_entries WHERE user_id = ? AND NOT EXISTS"
+                     " (SELECT 1 FROM bank_entry_concepts b WHERE b.bank_entry_id = bank_entries.id)", (user_id,))
+    return True
 
 
 def ingest_missing(conn: sqlite3.Connection, verbs: VerbData) -> int:
@@ -287,7 +337,9 @@ ENTRY_SELECT = (
     " (SELECT COUNT(DISTINCT st.study_session_id) FROM bank_entry_concepts b"
     "    JOIN study_terms st ON st.concept_id = b.concept_id WHERE b.bank_entry_id = e.id) AS sessions_count,"
     " (SELECT MAX(ss.created_at) FROM bank_entry_concepts b JOIN study_terms st ON st.concept_id = b.concept_id"
-    "    JOIN study_sessions ss ON ss.id = st.study_session_id WHERE b.bank_entry_id = e.id) AS last_seen_at"
+    "    JOIN study_sessions ss ON ss.id = st.study_session_id WHERE b.bank_entry_id = e.id) AS last_seen_at,"
+    " EXISTS (SELECT 1 FROM bank_entry_concepts b JOIN concepts c ON c.id = b.concept_id"
+    "    WHERE b.bank_entry_id = e.id AND b.role = 'TERM' AND c.category = 'MANUAL') AS added_manually"
     " FROM bank_entries e LEFT JOIN lexemes l ON l.id = e.lexeme_id"
 )
 
@@ -301,35 +353,60 @@ def summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "forms_seen": [f for f in forms if f != row["headword"]] if row["kind"] == "WORD" else [],
         "strength": strength(row), "sessions_count": row["sessions_count"],
         "created_at": row["created_at"], "last_seen_at": row["last_seen_at"],
-        "due_at": row["due_at"],
+        "due_at": row["due_at"], "added_manually": bool(row["added_manually"]),
     }
 
 
 def list_entries(conn: sqlite3.Connection, user_id: int, q: str = "", kind: str | None = None,
-                 sort: str = "recent", limit: int = 50, offset: int = 0) -> tuple[int, list[dict]]:
+                 sort: str = "recent", limit: int = 50, offset: int = 0,
+                 verbs: VerbData | None = None) -> tuple[int, list[dict]]:
+    """With a query, every summary says which form matched (matched_form) when it wasn't the headword:
+    searching "quieres" finds querer. A one-word query that is any form of a verb in the bank finds that
+    verb even if the form was never logged ("quieren" -> querer)."""
     where, args = ["e.user_id = ?"], [user_id]
     if kind:
         where.append("e.kind = ?")
         args.append(kind)
-    if q.strip():
-        like = f"%{q.strip().casefold()}%"
+    term = normalize(q)
+    infinitives: list[str] = []
+    if term:
+        like = f"%{term}%"
+        if verbs and len(tokens(term)) == 1:
+            infinitives = list(dict.fromkeys(verbs.infinitives_for(term)))
+        verb_match = f" OR l.lemma IN ({','.join('?' * len(infinitives))})" if infinitives else ""
         where.append(
             "(LOWER(COALESCE(l.lemma, e.phrase_text)) LIKE ? OR LOWER(COALESCE(e.user_translation, '')) LIKE ?"
             " OR LOWER(COALESCE(e.auto_translation, '')) LIKE ? OR LOWER(COALESCE(l.senses_json, '')) LIKE ?"
-            " OR EXISTS (SELECT 1 FROM bank_forms f WHERE f.bank_entry_id = e.id AND f.form LIKE ?))"
+            f" OR EXISTS (SELECT 1 FROM bank_forms f WHERE f.bank_entry_id = e.id AND f.form LIKE ?){verb_match})"
         )
-        args += [like] * 5
+        args += [like] * 5 + infinitives
     order = {
-        "recent": "last_seen_at DESC, e.id DESC",
+        "recent": "COALESCE(last_seen_at, e.created_at) DESC, e.id DESC",
         "alpha": "headword COLLATE NOCASE",
         "weak": "CASE WHEN e.last_outcome IN ('MISS','PARTIAL') THEN 0 WHEN e.last_outcome IS NULL THEN 1 ELSE 2 END, e.box, e.id DESC",
-    }.get(sort, "last_seen_at DESC, e.id DESC")
+    }.get(sort, "COALESCE(last_seen_at, e.created_at) DESC, e.id DESC")
     clause = " WHERE " + " AND ".join(where)
     total = conn.execute(
         f"SELECT COUNT(*) FROM bank_entries e LEFT JOIN lexemes l ON l.id = e.lexeme_id{clause}", args
     ).fetchone()[0]
     rows = conn.execute(f"{ENTRY_SELECT}{clause} ORDER BY {order} LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
-    return total, [summary(conn, r) for r in rows]
+    out = []
+    for r in rows:
+        s = summary(conn, r)
+        s["matched_form"] = _matched_form(conn, r, term, infinitives) if term else None
+        out.append(s)
+    return total, out
+
+
+def _matched_form(conn: sqlite3.Connection, row: sqlite3.Row, term: str, infinitives: list[str]) -> str | None:
+    """The form the search found inside a word entry, when it isn't the headword itself."""
+    if row["kind"] != "WORD" or term in row["headword"]:
+        return None
+    forms = [r[0] for r in conn.execute("SELECT form FROM bank_forms WHERE bank_entry_id = ? ORDER BY first_seen_at",
+                                        (row["id"],))]
+    if term in forms or row["lemma"] in infinitives:
+        return term
+    return next((f for f in forms if term in f and f != row["headword"]), None)
 
 
 def counts(conn: sqlite3.Connection, user_id: int) -> dict[str, int]:
@@ -378,6 +455,9 @@ def _all_forms(verbs: VerbData, row: sqlite3.Row, seen: list[str]) -> set[str]:
     return forms
 
 
+FORM_SENTENCES = 3  # sentences shown under each form the learner has met
+
+
 def detail(conn: sqlite3.Connection, verbs: VerbData, user_id: int, entry_id: int) -> dict | None:
     row = get_entry_row(conn, user_id, entry_id)
     if row is None:
@@ -409,9 +489,11 @@ def detail(conn: sqlite3.Connection, verbs: VerbData, user_id: int, entry_id: in
         "SELECT es_text AS es, en_text AS en, source FROM example_sentences WHERE lexeme_id = ?"
         " ORDER BY LENGTH(es_text), id LIMIT 10", (row["lexeme_id"],))] if row["kind"] == "WORD" else []
 
-    # The learner's own sentences that use this word or phrase.
+    # The learner's own sentences that use this word or phrase, and for each form met, the sentences
+    # (yours first, then dictionary examples) that use that exact form.
     forms_set = _all_forms(verbs, row, seen)
     mine = []
+    per_form: dict[str, list[dict]] = {f["form"]: [] for f in forms}
     for s in conn.execute(
         "SELECT st.sentence_text, ss.id AS session_id, ss.created_at FROM study_sentences st"
         " JOIN study_sessions ss ON ss.id = st.study_session_id WHERE ss.user_id = ? ORDER BY ss.id DESC",
@@ -423,11 +505,19 @@ def detail(conn: sqlite3.Connection, verbs: VerbData, user_id: int, entry_id: in
             hit = f" {' '.join(tokens(row['phrase_text']))} " in f" {' '.join(words)} "
         else:
             hit = bool(forms_set & set(words))
-        if hit:
+        if hit and len(mine) < 10:
             mine.append(dict(s))
-        if len(mine) >= 10:
-            break
+        for form, found in per_form.items():
+            if len(found) < FORM_SENTENCES and form in words:
+                found.append({"es": text, "en": None, "source": "YOURS"})
     out["your_sentences"] = mine
+    for ex in out["examples"]:
+        words = set(tokens(ex["es"]))
+        for form, found in per_form.items():
+            if len(found) < FORM_SENTENCES and form in words:
+                found.append({"es": ex["es"], "en": ex["en"], "source": ex["source"]})
+    for f in forms:
+        f["sentences"] = per_form[f["form"]]
 
     out["sessions"] = [dict(r) for r in conn.execute(
         "SELECT DISTINCT ss.id, ss.created_at, ss.activity_type, ss.context_text FROM bank_entry_concepts b"

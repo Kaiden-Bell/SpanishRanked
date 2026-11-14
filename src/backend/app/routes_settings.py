@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import user_settings
+from . import themes, user_settings
 from .deps import CurrentUser, get_db, ready_user
 from .security import verify_password
 
@@ -25,7 +25,16 @@ def get_settings(user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
 
 @router.patch("", response_model=user_settings.Settings)
 def patch_settings(body: user_settings.SettingsPatch, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
-    return user_settings.save(conn, user.id, body)
+    try:
+        return user_settings.save(conn, user.id, body)
+    except user_settings.ThemeLocked as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/themes")
+def list_themes(user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
+    """Every theme, and which ones the learner's held rank has unlocked."""
+    return themes.listing(user_settings.held_index(conn, user.id))
 
 
 @router.post("/sign-out-others")

@@ -41,13 +41,14 @@ def _summary(key: str, label: str, outcomes: list[str]) -> dict:
             "answers_needed": max(0, MIN_ANSWERS - len(outcomes)), "trend": trend}
 
 
-def profile(conn: sqlite3.Connection, user_id: int) -> dict:
+def profile(conn: sqlite3.Connection, user_id: int, *, before_evidence_id: int | None = None) -> dict:
+    """before_evidence_id: only answers recorded before that evidence row (the profile as it was then)."""
     rows = conn.execute(
         "SELECT ce.outcome, ce.modality, i.skill, i.item_type, i.answer_json, c.token"
         " FROM concept_evidence ce JOIN assessment_items i ON i.id = ce.assessment_item_id"
         " JOIN assessments a ON a.id = i.assessment_id JOIN concepts c ON c.id = ce.concept_id"
-        " WHERE a.user_id = ? AND ce.evidence_type = 'ASSESSMENT' ORDER BY ce.id DESC",
-        (user_id,),
+        " WHERE a.user_id = ? AND ce.evidence_type = 'ASSESSMENT' AND ce.id < ? ORDER BY ce.id DESC",
+        (user_id, before_evidence_id if before_evidence_id is not None else 2**62),
     ).fetchall()
     by_modality, by_area = defaultdict(list), defaultdict(list)
     tenses, words = defaultdict(lambda: [0, 0]), defaultdict(lambda: [0, 0])

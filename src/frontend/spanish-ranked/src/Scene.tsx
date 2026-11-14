@@ -28,15 +28,18 @@ function todaysScene(): SceneDef {
   return SCENES[day % SCENES.length]
 }
 
-export default function Scene() {
-  const [scene] = useState(todaysScene)
+/** sceneId pins one scene (a theme's); otherwise the scene changes daily. */
+export default function Scene({ sceneId }: { sceneId?: string | null }) {
+  const [daily] = useState(todaysScene)
+  const scene = SCENES.find((s) => s.id === sceneId) ?? daily
   const src = `/scenes/${scene.id}.webp`
-  const [hasPhoto, setHasPhoto] = useState(false)
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const hasPhoto = loaded === src
 
   // Preload so a missing file falls back silently and the caption only claims a photo that is really there.
   useEffect(() => {
     const img = new Image()
-    img.onload = () => setHasPhoto(true)
+    img.onload = () => setLoaded(src)
     img.src = src
     return () => {
       img.onload = null

@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, type UserSettings } from './api'
+import { api, ApiError, type Theme, type UserSettings } from './api'
 import { DEFAULT_RATE, useSpanishVoice } from './speech'
 
 type Props = {
   onMotion: (motion: UserSettings['motion']) => void
+  onTheme: (theme: string) => void
   onReset: (message: string) => void
 }
 
@@ -154,7 +155,48 @@ function ResetAll({ onReset }: { onReset: Props['onReset'] }) {
   )
 }
 
-export default function Settings({ onMotion, onReset }: Props) {
+/** Themes unlock as you win boss battles. Each card previews its palette with the theme's own tokens. */
+function Appearance({ current, onPick, saved }: { current: string; onPick: (id: string) => void; saved: boolean }) {
+  const [themes, setThemes] = useState<Theme[] | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    api.themes(controller.signal).then(setThemes).catch(() => {})
+    return () => controller.abort()
+  }, [])
+  const open = themes?.filter((t) => t.unlocked).length ?? 0
+  return (
+    <section className="card settings-card" aria-labelledby="st-look">
+      <div className="card-head">
+        <h2 id="st-look">Appearance <Saved show={saved} /></h2>
+        {themes && <span className="cap num">{open} of {themes.length} unlocked</span>}
+      </div>
+      {!themes ? <p className="status">Loading…</p> : (
+        <ul className="theme-grid" role="radiogroup" aria-label="Theme">
+          {themes.map((t) => (
+            <li key={t.id}>
+              <button type="button" role="radio" aria-checked={current === t.id} disabled={!t.unlocked}
+                className="theme-card" onClick={() => onPick(t.id)}>
+                <span className="theme-preview" data-theme={t.id} aria-hidden="true"
+                  style={t.scene ? { backgroundImage: `linear-gradient(to top, var(--bg) 20%, transparent), url(/scenes/${t.scene}.webp)` } : undefined}>
+                  <span className="tp-ink">Aa</span>
+                  <span className="tp-accent" />
+                  <span className="tp-surface" />
+                </span>
+                <span className="theme-name">{t.label}</span>
+                <span className="theme-meta">
+                  {t.unlocked ? (current === t.id ? 'In use' : t.scene ? 'Palette and scene' : 'Palette') : `Unlocks at ${t.rank_name}`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="hint">Win a boss battle to rank up and unlock the next theme. A theme with a scene keeps its photo in the banner.</p>
+    </section>
+  )
+}
+
+export default function Settings({ onMotion, onTheme, onReset }: Props) {
   const voice = useSpanishVoice()
   const [prefs, setPrefs] = useState<UserSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -176,6 +218,7 @@ export default function Settings({ onMotion, onReset }: Props) {
       const next = await api.saveSettings(patch)
       setPrefs(next)
       if (patch.motion) onMotion(next.motion)
+      if (patch.theme) onTheme(next.theme)
       setSaved(key)
       setTimeout(() => setSaved((k) => (k === key ? null : k)), 1800)
     } catch (err) {
@@ -247,6 +290,8 @@ export default function Settings({ onMotion, onReset }: Props) {
             </>
           )}
         </section>
+
+        {prefs && <Appearance current={prefs.theme} saved={saved === 'theme'} onPick={(id) => update({ theme: id }, 'theme')} />}
 
         <section className="card settings-card" aria-labelledby="st-motion">
           <div className="card-head"><h2 id="st-motion">Motion</h2></div>

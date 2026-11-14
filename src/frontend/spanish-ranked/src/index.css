@@ -27,6 +27,105 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Themes unlocked by rank (backend: app/themes.py). Each overrides only the colour tokens; the rest
+   follow from them. A .theme-preview[data-theme] in Settings shows a theme with its own tokens. */
+:root[data-theme],
+.theme-preview[data-theme] {
+  --hover: color-mix(in srgb, var(--ink) 6%, transparent);
+  --selected: color-mix(in srgb, var(--accent) 14%, transparent);
+  --line: color-mix(in srgb, var(--ink) 12%, transparent);
+  --line-strong: color-mix(in srgb, var(--ink) 28%, transparent);
+  --track: color-mix(in srgb, var(--ink) 10%, transparent);
+  --good: var(--accent);
+}
+
+.theme-preview[data-theme='alhambra'] {
+  --bg: #11140f;
+  --surface: #181c14;
+  --ink: #ece6d6;
+  --accent: #a9ae6e;
+}
+
+:root[data-theme='tonanes'],
+.theme-preview[data-theme='tonanes'] {
+  --bg: #0f1418;
+  --rail-bg: #0c1014;
+  --surface: #151c21;
+  --field: #121820;
+  --nav-active: #33545a;
+  --ink: #e6eae8;
+  --ink-2: #b4bdbe;
+  --ink-3: #87928f;
+  --accent: #8fbcc0;
+  --accent-hover: #a5ccd0;
+  --accent-ink: #0b1416;
+  --bad: #e3a08c;
+}
+
+:root[data-theme='salamanca'],
+.theme-preview[data-theme='salamanca'] {
+  --bg: #16120d;
+  --rail-bg: #120f0a;
+  --surface: #1e1812;
+  --field: #19140e;
+  --nav-active: #6b4f2a;
+  --ink: #f0e6d4;
+  --ink-2: #c7b99f;
+  --ink-3: #998b73;
+  --accent: #d0a564;
+  --accent-hover: #ddb579;
+  --accent-ink: #1a120a;
+  --bad: #e39a85;
+}
+
+:root[data-theme='cantabria'],
+.theme-preview[data-theme='cantabria'] {
+  --bg: #0e1512;
+  --rail-bg: #0b110e;
+  --surface: #141d18;
+  --field: #111914;
+  --nav-active: #355c44;
+  --ink: #e4ece4;
+  --ink-2: #b2c0b4;
+  --ink-3: #849487;
+  --accent: #8cc29a;
+  --accent-hover: #a2d0ad;
+  --accent-ink: #0b140e;
+  --bad: #e2a08c;
+}
+
+:root[data-theme='sevilla'],
+.theme-preview[data-theme='sevilla'] {
+  --bg: #17110c;
+  --rail-bg: #120d09;
+  --surface: #1f1710;
+  --field: #1a130d;
+  --nav-active: #7a5a22;
+  --ink: #f3e7d3;
+  --ink-2: #cdb998;
+  --ink-3: #9e8b6d;
+  --accent: #e0b354;
+  --accent-hover: #ecc46c;
+  --accent-ink: #1b1206;
+  --bad: #e8907a;
+}
+
+:root[data-theme='medianoche'],
+.theme-preview[data-theme='medianoche'] {
+  --bg: #0c0f19;
+  --rail-bg: #090c14;
+  --surface: #121726;
+  --field: #0f1320;
+  --nav-active: #3d4580;
+  --ink: #e7e8f0;
+  --ink-2: #b3b7c9;
+  --ink-3: #878ca2;
+  --accent: #a7b0f5;
+  --accent-hover: #bcc3fa;
+  --accent-ink: #0c0f1f;
+  --bad: #ef9f8f;
+}
+
 *,
 *::before,
 *::after {

@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { ACTIVITY_TYPES, api, ApiError, type Award, type LookupPreview, type StudySession } from './api'
+import { useState, type FormEvent } from 'react'
+import { ACTIVITY_TYPES, api, ApiError, type Award, type StudySession } from './api'
+import { PreviewChip } from './TermPreview'
+import { useTermPreview } from './useTermPreview'
 
 const MAX_TERMS = 5
 const MAX_SENTENCES = 3
@@ -11,7 +13,6 @@ const MODES: { value: StudySession['mode']; label: string }[] = [
   { value: 'GUIDED_STUDY', label: 'Guided study' },
 ]
 
-/** What a typed term means, looked up a moment after typing stops. Advisory only: saving never waits for it. */
 function TermInput({ value, index, keepPhrase, onChange, onKeepPhrase }: {
   value: string
   index: number
@@ -19,48 +20,14 @@ function TermInput({ value, index, keepPhrase, onChange, onKeepPhrase }: {
   onChange: (v: string) => void
   onKeepPhrase: (keep: boolean) => void
 }) {
-  const [result, setResult] = useState<{ term: string; preview: LookupPreview } | null>(null)
-  const term = value.trim()
-  const preview = result?.term === term ? result.preview : null
-
-  useEffect(() => {
-    if (term.length < 2) return
-    const controller = new AbortController()
-    const timer = setTimeout(() => {
-      api.lookup(term, controller.signal).then((p) => setResult({ term, preview: p })).catch(() => {})
-    }, 600)
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
-    }
-  }, [term])
-
-  const word = preview?.words[0]
-  let chip: ReactNode = null
-  if (preview?.english_only) {
-    chip = <span className="term-warn">That looks like English, so it won’t be added to your words. Type the Spanish, and add the meaning after a dash: <span lang="es">extrañar</span> - to miss</span>
-  } else if (preview && preview.kind === 'PHRASE') {
-    chip = <>
-      {preview.meaning ? <>Your meaning: “{preview.meaning}”</> : preview.translation && <>“{preview.translation}”</>}
-      {preview.words.length > 0 && <> · words: <span lang="es">{preview.words.map((w) => w.lemma).join(', ')}</span></>}
-    </>
-  } else if (word && (word.translation || word.lemma !== word.surface || word.forms.length || preview?.meaning)) {
-    chip = (
-      <>
-        {word.lemma !== word.surface && <strong lang="es">{word.lemma}</strong>}
-        {word.lemma !== word.surface && (word.translation || preview?.meaning) && ' · '}
-        {preview?.meaning ? <>your meaning “{preview.meaning}”</> : word.translation}
-        {word.forms[0] && word.forms[0].person_label && <> · {word.forms[0].summary}</>}
-      </>
-    )
-  }
+  const preview = useTermPreview(value)
   const multiword = !!preview && preview.kind === 'PHRASE' && !preview.english_only
   return (
     <div className="term-input">
       <input value={value} maxLength={200} aria-label={`Word or phrase ${index + 1}`} lang="es"
         placeholder={index === 0 ? 'e.g. extrañan, or te extraño - I miss you' : undefined}
         onChange={(e) => onChange(e.target.value)} />
-      {chip && <span className="term-chip" aria-live="polite">{chip}</span>}
+      <PreviewChip preview={preview} />
       {multiword && (
         <label className="term-keep">
           <input type="checkbox" checked={keepPhrase} onChange={(e) => onKeepPhrase(e.target.checked)} />

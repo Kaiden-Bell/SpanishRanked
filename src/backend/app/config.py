@@ -30,6 +30,9 @@ class Settings:
     online_lookups: bool = False
     lookup_timeout: float = 4.0
     lookup_contact: str = ""  # URL or email for the User-Agent of online lookups (Wikimedia policy)
+    # Grade model-checked quizzes on a background worker so the learner can keep using the app.
+    # Off by default here so tests grade synchronously, on by default in from_env().
+    background_grading: bool = False
 
     @property
     def tz(self) -> ZoneInfo:
@@ -66,4 +69,5 @@ class Settings:
             online_lookups=os.environ.get("LANGUAGEAI_ONLINE_LOOKUPS", "1") not in ("0", "false", ""),
             lookup_timeout=float(os.environ.get("LANGUAGEAI_LOOKUP_TIMEOUT", 4.0)),
             lookup_contact=os.environ.get("LANGUAGEAI_LOOKUP_CONTACT", ""),
+            background_grading=os.environ.get("LANGUAGEAI_BACKGROUND_GRADING", "1") not in ("0", "false", ""),
         )

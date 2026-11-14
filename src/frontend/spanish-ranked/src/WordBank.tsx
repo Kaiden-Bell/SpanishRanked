@@ -1,7 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, type BankDetail, type BankSummary, type Conjugation, type Strength } from './api'
+import { useEffect, useState, type FormEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
+import { api, ApiError, type BankAddResult, type BankDetail, type BankSummary, type Conjugation, type Strength } from './api'
+import { PreviewChip } from './TermPreview'
+import { useTermPreview } from './useTermPreview'
 
 const PAGE = 50
+const MAX_ADD = 50
+const FLASH_MS = 1600
 
 const STRENGTH_LABEL: Record<Strength, string> = {
   new: 'Not tested yet',
@@ -29,13 +33,115 @@ function LookupNote({ status, kind }: { status: BankSummary['lookup_status']; ki
   return <p className="cap" role="status">{text}</p>
 }
 
+type Open = { id: number; highlight?: string | null }
+
 export default function WordBank({ initialId, onStudy }: { initialId?: number | null; onStudy: () => void }) {
-  const [openId, setOpenId] = useState<number | null>(initialId ?? null)
-  if (openId !== null) return <WordDetail key={openId} id={openId} onBack={() => setOpenId(null)} onOpen={setOpenId} />
-  return <WordList onOpen={setOpenId} onStudy={onStudy} />
+  const [open, setOpen] = useState<Open | null>(initialId ? { id: initialId } : null)
+  if (open !== null) {
+    return <WordDetail key={open.id} id={open.id} highlight={open.highlight ?? null}
+      onBack={() => setOpen(null)} onOpen={(id) => setOpen({ id })} />
+  }
+  return <WordList onOpen={(id, highlight) => setOpen({ id, highlight })} onStudy={onStudy} />
 }
 
-function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: () => void }) {
+/** The line of a textarea the caret is on: that's the term the preview describes. */
+function lineAtCaret(el: HTMLTextAreaElement): string {
+  const before = el.value.slice(0, el.selectionStart)
+  const start = before.lastIndexOf('\n') + 1
+  const end = el.value.indexOf('\n', el.selectionStart)
+  return el.value.slice(start, end === -1 ? undefined : end)
+}
+
+function AddWords({ onAdded, onClose, onOpen }: {
+  onAdded: () => void
+  onClose: () => void
+  onOpen: (id: number) => void
+}) {
+  const [text, setText] = useState('')
+  const [line, setLine] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<BankAddResult | null>(null)
+  const preview = useTermPreview(line, 450)
+  const terms = text.split('\n').map((t) => t.trim()).filter(Boolean)
+  const tooMany = terms.length > MAX_ADD
+  const tooLong = terms.find((t) => t.length > 100)
+
+  const track = (e: SyntheticEvent<HTMLTextAreaElement>) => setLine(lineAtCaret(e.currentTarget))
+
+  async function submit(e?: FormEvent) {
+    e?.preventDefault()
+    if (!terms.length || tooMany || tooLong) return
+    setBusy(true)
+    setError(null)
+    try {
+      const out = await api.addToBank(terms)
+      setResult(out)
+      setText('')
+      setLine('')
+      if (out.added.length) onAdded()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.messages.join(' ') : 'Could not add those words.')
+    }
+    setBusy(false)
+  }
+
+  // Ctrl/Cmd+Enter adds; plain Enter starts the next word.
+  const keys = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit()
+  }
+
+  return (
+    <section className="card add-words" aria-labelledby="aw">
+      <form onSubmit={submit}>
+        <div className="card-head">
+          <h2 id="aw">Add words you know</h2>
+          <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+        </div>
+        <label className="field">
+          <span>One word or phrase per line</span>
+          <textarea value={text} rows={5} lang="es" autoFocus spellCheck={false}
+            placeholder={'quieres\nla maleta\nte extraño - I miss you'}
+            onChange={(e) => { setText(e.target.value); track(e) }} onSelect={track} onKeyDown={keys} />
+        </label>
+        <div className="aw-preview">{line.trim().length >= 2 && <PreviewChip preview={preview} />}</div>
+        <p className="hint">
+          Forms join their dictionary entry, so <span lang="es">quieres</span> goes under <span lang="es">querer</span>.
+          Add your own meaning after a dash. Meanings, examples and conjugations are filled in for you.
+        </p>
+        {tooMany && <p className="error" role="alert">Up to {MAX_ADD} at a time.</p>}
+        {tooLong && <p className="error" role="alert">Keep each line under 100 characters.</p>}
+        {error && <p className="error" role="alert">{error}</p>}
+        <div className="actions">
+          <button className="btn primary" type="submit" disabled={busy || !terms.length || tooMany || !!tooLong}>
+            {busy ? 'Adding…' : terms.length > 1 ? `Add ${terms.length} words` : 'Add word'}
+          </button>
+        </div>
+      </form>
+
+      {result && (
+        <ul className="aw-result" aria-live="polite">
+          {result.added.map((a) => (
+            <li key={a.text}>
+              <button className="linkish" onClick={() => onOpen(a.entry_id)}><span lang="es">{a.headword}</span></button>
+              {' '}
+              {a.kind === 'PHRASE'
+                ? <>added as a phrase{a.words > 0 && <> with its {a.words === 1 ? 'word' : `${a.words} words`}</>}</>
+                : a.typed !== a.headword
+                  ? <>{a.merged ? 'already here — added the form' : 'added, from'} <span lang="es">{a.typed}</span></>
+                  : a.merged ? 'was already in your words' : 'added'}
+            </li>
+          ))}
+          {result.skipped.map((s) => (
+            <li key={s.text} className="aw-skipped">Skipped “{s.text}”: {s.skipped}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function WordList({ onOpen, onStudy }: { onOpen: (id: number, highlight?: string | null) => void; onStudy: () => void }) {
   const [q, setQ] = useState('')
   const [kind, setKind] = useState<Kind>('WORD')
   const [counts, setCounts] = useState<{ WORD: number; PHRASE: number } | null>(null)
@@ -44,6 +150,8 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
   const [total, setTotal] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [reload, setReload] = useState(0)
 
   const params = { q: q.trim(), kind, sort } as const
 
@@ -67,7 +175,7 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
       controller.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, kind, sort])
+  }, [q, kind, sort, reload])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -86,10 +194,15 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
 
   return (
     <>
-      <header className="page-head">
-        <h1>Words</h1>
-        <p className="lede">Every word and phrase from your study sessions, with its meaning, the forms you met and how to conjugate it.</p>
+      <header className="page-head bank-head-row">
+        <div>
+          <h1>Words</h1>
+          <p className="lede">Every word and phrase you’ve logged or added, with its meaning, the forms you met and how to conjugate it.</p>
+        </div>
+        {!adding && <button className="btn primary" onClick={() => setAdding(true)}>Add words</button>}
       </header>
+
+      {adding && <AddWords onClose={() => setAdding(false)} onAdded={() => setReload((r) => r + 1)} onOpen={(id) => onOpen(id)} />}
 
       <div className="bank-tabs" role="tablist" aria-label="Word bank">
         {(['WORD', 'PHRASE'] as Kind[]).map((k) => (
@@ -118,10 +231,13 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
 
       {error && <p className="error" role="alert">{error}</p>}
       {total === null && !error && <p className="status">Loading…</p>}
-      {empty && (
+      {empty && !adding && (
         <div className="empty">
-          <p>Your word bank is empty. Words and phrases you log in a study session appear here.</p>
-          <button className="btn primary" onClick={onStudy}>Start Study Session</button>
+          <p>Your word bank is empty. Words you log in a study session appear here, or add the ones you already know.</p>
+          <div className="actions">
+            <button className="btn primary" onClick={() => setAdding(true)}>Add words you know</button>
+            <button className="btn" onClick={onStudy}>Start Study Session</button>
+          </div>
         </div>
       )}
       {total === 0 && !empty && (
@@ -135,8 +251,11 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
       <ul className="bank-list">
         {items.map((e) => (
           <li key={e.id}>
-            <button className="bank-row" onClick={() => onOpen(e.id)}>
-              <span className="bank-head" lang="es">{e.headword}</span>
+            <button className="bank-row" onClick={() => onOpen(e.id, e.matched_form)}>
+              <span className="bank-head" lang="es">
+                {e.headword}
+                {e.matched_form && <span className="form-match" title={`${e.matched_form} is a form of ${e.headword}`}>{e.matched_form}</span>}
+              </span>
               <span className="bank-tr">
                 {e.translation ?? <em>{e.lookup_status === 'pending' ? 'looking up…' : 'no meaning yet'}</em>}
               </span>
@@ -158,11 +277,19 @@ function WordList({ onOpen, onStudy }: { onOpen: (id: number) => void; onStudy: 
   )
 }
 
-function ConjugationTable({ table }: { table: Conjugation }) {
-  const [all, setAll] = useState(false)
+const MAIN_PERSONS = (key: string) => key !== 'vos' && key !== 'vosotros'
+
+/** Whether a form shows in the main-tenses view (core tenses, without vos and vosotros). */
+function inMainView(table: Conjugation, form: string) {
+  return table.rows.some((r) => r.core && Object.entries(r.cells).some(([p, fs]) => MAIN_PERSONS(p) && fs.includes(form)))
+}
+
+function ConjugationTable({ table, highlight, flashing }: { table: Conjugation; highlight: string | null; flashing: boolean }) {
+  // A searched form that only appears in a rarer tense or person opens the full table.
+  const [all, setAll] = useState(() => !!highlight && !inMainView(table, highlight))
   const seen = new Set(table.seen)
   const rows = all ? table.rows : table.rows.filter((r) => r.core)
-  const persons = all ? table.persons : table.persons.filter((p) => p.key !== 'vos' && p.key !== 'vosotros')
+  const persons = all ? table.persons : table.persons.filter((p) => MAIN_PERSONS(p.key))
   return (
     <section className="card word-section">
       <div className="card-head">
@@ -188,9 +315,12 @@ function ConjugationTable({ table }: { table: Conjugation }) {
                 </th>
                 {persons.map((p) => (
                   <td key={p.key}>
-                    {(r.cells[p.key] ?? []).map((f) =>
-                      seen.has(f) ? <mark key={f} title="You have met this form">{f}</mark> : <span key={f}>{f}</span>,
-                    )}
+                    {(r.cells[p.key] ?? []).map((f) => {
+                      const hl = f === highlight ? { 'data-hl': '', className: flashing ? 'flash' : undefined } : {}
+                      return seen.has(f)
+                        ? <mark key={f} title="You have met this form" {...hl}>{f}</mark>
+                        : <span key={f} {...hl}>{f}</span>
+                    })}
                   </td>
                 ))}
               </tr>
@@ -206,8 +336,15 @@ function ConjugationTable({ table }: { table: Conjugation }) {
   )
 }
 
-function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpen: (id: number) => void }) {
+function WordDetail({ id, highlight, onBack, onOpen }: {
+  id: number
+  highlight: string | null
+  onBack: () => void
+  onOpen: (id: number) => void
+}) {
   const [entry, setEntry] = useState<BankDetail | null>(null)
+  const [flashing, setFlashing] = useState(!!highlight)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mine, setMine] = useState('')
   const [saving, setSaving] = useState(false)
@@ -236,6 +373,26 @@ function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; on
       controller.abort()
     }
   }, [id])
+
+  // Opened from a search for one of its forms: bring that form into view and flash it once.
+  const loaded = entry !== null
+  useEffect(() => {
+    if (!loaded || !highlight) return
+    const target = document.querySelector('.word-grid [data-hl]')
+    const reduce = document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches
+    target?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    const timer = setTimeout(() => setFlashing(false), FLASH_MS)
+    return () => clearTimeout(timer)
+  }, [loaded, highlight])
+
+  async function remove() {
+    try {
+      await api.removeFromBank(id)
+      onBack()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not remove this word.')
+    }
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -300,12 +457,15 @@ function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; on
             </section>
           )}
 
-          {entry.forms.some((f) => f.analyses.length > 0 || f.meaning) && (
+          {entry.kind === 'WORD' && entry.forms.some((f) => f.analyses.length > 0 || f.meaning || f.sentences.length > 0) && (
             <section className="card word-section">
-              <div className="card-head"><h2>The form you met</h2></div>
+              <div className="card-head">
+                <h2>{entry.forms.length === 1 ? 'The form you met' : 'Forms you’ve encountered'}</h2>
+                {entry.forms.length > 1 && <span className="cap num">{entry.forms.length}</span>}
+              </div>
               <ul className="form-list">
                 {entry.forms.map((f) => (
-                  <li key={f.form}>
+                  <li key={f.form} {...(f.form === highlight ? { 'data-hl': '', className: flashing ? 'flash' : undefined } : {})}>
                     <span className="form-word" lang="es">{f.form}</span>
                     {f.meaning && <span className="form-mine">Your note: “{f.meaning}”</span>}
                     {f.analyses.length === 0 ? (
@@ -325,13 +485,23 @@ function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; on
                       <span className="cap">With the pronoun{f.clitics.length > 1 ? 's' : ''} <span lang="es">{f.clitics.join(' + ')}</span> attached.</span>
                     )}
                     {f.also.length > 0 && <span className="cap">The same spelling is also a form of <span lang="es">{f.also.join(', ')}</span>.</span>}
+                    {f.sentences.length > 0 && (
+                      <ul className="form-sentences">
+                        {f.sentences.map((x) => (
+                          <li key={x.es}>
+                            <span lang="es">{x.es}</span>
+                            {x.source === 'YOURS' ? <span className="ex-tag">yours</span> : x.en && <span className="ex-en">{x.en}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>
             </section>
           )}
 
-          {entry.conjugation && <ConjugationTable table={entry.conjugation} />}
+          {entry.conjugation && <ConjugationTable table={entry.conjugation} highlight={highlight} flashing={flashing} />}
 
           {(entry.examples.length > 0 || entry.your_sentences.length > 0) && (
             <section className="card word-section">
@@ -408,8 +578,13 @@ function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; on
           <section className="card word-section">
             <div className="card-head"><h2>Your history</h2></div>
             <p className="meta">
-              Logged in {entry.sessions_count} {entry.sessions_count === 1 ? 'session' : 'sessions'}
-              {entry.last_seen_at && <>, last on {when(entry.last_seen_at)}</>}.
+              {entry.sessions_count === 0
+                ? <>Added by hand on {when(entry.created_at)}.</>
+                : <>
+                    Logged in {entry.sessions_count} {entry.sessions_count === 1 ? 'session' : 'sessions'}
+                    {entry.last_seen_at && <>, last on {when(entry.last_seen_at)}</>}
+                    {entry.added_manually && ', and added by hand'}.
+                  </>}
             </p>
             <p className="meta">
               {results === 0
@@ -425,6 +600,18 @@ function WordDetail({ id, onBack, onOpen }: { id: number; onBack: () => void; on
                   </li>
                 ))}
               </ul>
+            )}
+            {entry.sessions_count === 0 && (
+              <div className="actions">
+                {confirmRemove ? (
+                  <>
+                    <button className="btn danger-btn" onClick={remove}>Remove {entry.kind === 'PHRASE' ? 'phrase' : 'word'}</button>
+                    <button className="btn ghost" onClick={() => setConfirmRemove(false)}>Keep it</button>
+                  </>
+                ) : (
+                  <button className="btn ghost" onClick={() => setConfirmRemove(true)}>Remove from my words</button>
+                )}
+              </div>
             )}
           </section>
         </aside>

@@ -200,7 +200,6 @@ An optional, research-ordered path: 48 units in four stages. Each pairs a lesson
 
 - Speaking, with no microphone input. Speaking stays "Not yet assessed".
 - Server-side text-to-speech, for browsers with no Spanish voice. Piper is a candidate.
-- A history page for past quizzes and boss battles. Their results are in the API.
 - Editing study sessions.
 - Picking the reading (verb vs noun) of an ambiguous single word from the Words page.
 
@@ -220,3 +219,29 @@ Decision (owner): **a deleted session's XP is taken back.**
 - Ranks won in a boss battle. A held rank no longer needs its XP threshold, so a delete can't take back a battle.
 
 Deleting and then logging the same session again can't earn its XP twice. The endpoint is `DELETE /api/study-sessions/{id}`; the History page asks for confirmation inline.
+
+## Daily-habit features (built, Nov 14, 2026)
+
+**Adding words by hand.** Words → Add words takes one word or phrase per line, written the way a study term is (`quieres`, `te extraño - I miss you`).
+- Each line goes through the same parsing and lemmatising as a session term, so `quieres` joins `querer`. An article plus a noun (`la maleta`) becomes the word, not a phrase.
+- Entries link to a `MANUAL` concept that no session owns, so deleting a session never removes them. They start as new words (due now) and pay no XP.
+- Meanings, examples and conjugations come from the existing background lookups.
+- A hand-added entry no session has logged can be removed: `POST /api/bank`, `DELETE /api/bank/{id}`.
+
+**One entry per dictionary form.** Search accepts any form: a one-word query that is any conjugation of a verb in the bank finds that verb, and the result says which form matched (`matched_form`). Opening it scrolls to that form and flashes it, in the forms list and in the conjugation table. Each form lists the sentences, yours first, that use it.
+
+**Background grading.** A quiz with free sentences comes back at once and the model grades it on a worker thread (`assessment/worker.py`).
+- Queued means `SUBMITTED` with no `grading_error`. Quizzes still queued at startup are graded after a restart.
+- Code-checked quizzes still grade inside the request.
+- The app shell polls `GET /api/assessments/activity` while anything is grading, shows "Grading" on the Quiz nav item and a toast when a quiz is done.
+- The Quiz page lists recent quizzes.
+- `LANGUAGEAI_BACKGROUND_GRADING=0` grades synchronously, as before.
+
+**Progress recap.** A graded quiz reports what it changed, all derived and none stored, so an old quiz shows what it did then:
+- XP before and after within the rank band
+- before and after for each skill it touched
+- a rank won in a boss battle
+
+**Themes.** One per rank, each a palette plus the banner scene it is named after (`app/themes.py`, tokens in `index.css`).
+- A theme is unlocked by the held rank (boss passed or grandfathered).
+- The server refuses a locked theme and falls back to the default if the rank is lost (Reset all data).

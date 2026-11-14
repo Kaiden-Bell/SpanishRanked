@@ -138,3 +138,14 @@ def test_ranks_reached_before_bosses_existed_are_kept(tmp_path):
     from app.practice.boss import held_rank_index
 
     assert rules.RANKS[held_rank_index(conn, 1, 350)][1] == "Pre-Learner III"
+
+
+def test_a_won_battle_reports_the_rank_and_the_theme_it_unlocks(api, raw_db, model):
+    ready(api, raw_db)
+    _, body = fight(api, raw_db, model)
+    rank_up = body["progress"]["rank_up"]
+    assert rank_up["rank"] == rules.RANKS[1][1] and rank_up["theme"]["id"] == "tonanes"
+    xp = body["progress"]["xp"]
+    assert xp["rank"] == rules.RANKS[0][1]  # the band it was earned in, before the win
+    themes = {t["id"]: t["unlocked"] for t in api.get("/api/settings/themes").json()}
+    assert themes["alhambra"] and themes["tonanes"] and not themes["salamanca"]

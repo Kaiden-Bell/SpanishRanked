@@ -15,10 +15,11 @@ LISTENING = {"LISTEN_PICK", "DICTATION"}
 
 def test_defaults_and_validation(api):
     s = api.get("/api/settings").json()
-    assert s == {"quiz_items": rules.QUIZ_ITEMS, "warmup_items": rules.WARMUP_ITEMS, "listening": True, "motion": "system"}
+    assert s == {"quiz_items": rules.QUIZ_ITEMS, "warmup_items": rules.WARMUP_ITEMS, "listening": True, "motion": "system",
+                 "theme": "alhambra"}
     assert api.patch("/api/settings", json={"quiz_items": 2}).status_code == 422
     assert api.patch("/api/settings", json={"quiz_items": 11}).status_code == 422
-    assert api.patch("/api/settings", json={"theme": "light"}).status_code == 422
+    assert api.patch("/api/settings", json={"font": "serif"}).status_code == 422
     assert api.patch("/api/settings", json={"motion": "reduce"}).json()["motion"] == "reduce"
     assert api.get("/api/settings").json()["motion"] == "reduce"  # saved, other keys untouched
     assert api.get("/api/settings").json()["quiz_items"] == rules.QUIZ_ITEMS
@@ -82,3 +83,22 @@ def test_reset_starts_over_but_keeps_the_account_settings_and_dictionary(api, ra
 def test_settings_need_a_signed_in_user(client, path):
     call = client.get if path == "/api/settings" else client.post
     assert call(path).status_code in (401, 403)
+
+
+def test_themes_unlock_with_the_held_rank(api, raw_db):
+    listed = {t["id"]: t for t in api.get("/api/settings/themes").json()}
+    assert listed["alhambra"]["unlocked"] and not listed["tonanes"]["unlocked"]
+    assert listed["tonanes"]["rank_name"] == "Pre-Learner II"
+    assert api.get("/api/settings").json()["theme"] == "alhambra"
+    locked = api.patch("/api/settings", json={"theme": "tonanes"})
+    assert locked.status_code == 400 and "unlocked" in locked.text
+    assert api.patch("/api/settings", json={"theme": "nope"}).status_code == 400
+
+    raw_db.execute("INSERT INTO boss_passes (user_id, rank_name, grandfathered) VALUES (1, 'Pre-Learner II', 1)")
+    raw_db.commit()
+    assert api.patch("/api/settings", json={"theme": "tonanes"}).json()["theme"] == "tonanes"
+
+    # Losing the rank (reset all data) quietly falls back to the default theme.
+    raw_db.execute("DELETE FROM boss_passes")
+    raw_db.commit()
+    assert api.get("/api/settings").json()["theme"] == "alhambra"

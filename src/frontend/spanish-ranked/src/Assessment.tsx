@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, type Assessment as AssessmentData, type Outcome, type QuizFocus } from './api'
+import { api, ApiError, type Assessment as AssessmentData, type AssessmentSummary, type Outcome, type QuizFocus } from './api'
 import { OUTCOME_LABEL, SKILL_LABEL } from './labels'
+import ProgressRecap from './ProgressRecap'
 import Question from './Question'
 import { useSpanishVoice } from './speech'
 
@@ -34,11 +35,12 @@ type RunnerProps = {
   onDone: () => void
   onAgain?: () => void
   onOpenWord?: (entryId: number) => void
+  onThemes?: () => void
   title?: string
 }
 
 /** Answers one question at a time: code-checked questions show their result straight away. */
-export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title = 'Quiz' }: RunnerProps) {
+export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, onThemes, title = 'Quiz' }: RunnerProps) {
   const { speak } = useSpanishVoice()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +54,20 @@ export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title 
   useEffect(() => {
     if (shown) nextRef.current?.focus()
   }, [shown])
+
+  // Graded in the background: check back while this screen is open. The app shell also announces it.
+  const grading = quiz.status === 'SUBMITTED' && quiz.grading
+  useEffect(() => {
+    if (!grading) return
+    const controller = new AbortController()
+    const timer = setInterval(() => {
+      api.getAssessment(quiz.id, controller.signal).then((q) => !q.grading && onChange(q)).catch(() => {})
+    }, 3000)
+    return () => {
+      clearInterval(timer)
+      controller.abort()
+    }
+  }, [grading, quiz.id, onChange])
 
   async function answer(text: string) {
     const item = quiz.items[pendingIndex]
@@ -129,16 +145,33 @@ export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title 
         </header>
         <section className="card q-card">
           <Question key={item.id} item={item} busy={busy} speak={speak} onAnswer={answer} />
-          {busy && item.item_type === 'WRITE' && pendingIndex === total - 1 && (
-            <p className="status" role="status">Grading your sentence. The local model can take a little while…</p>
-          )}
           {errorBox}
         </section>
       </>
     )
   }
 
-  // ---------- answers saved, grading pending (the model was down) ----------
+  // ---------- answers saved, the model is grading them in the background ----------
+  if (grading) {
+    return (
+      <>
+        <header className="page-head">
+          <h1>Grading in the background</h1>
+          <p className="lede">
+            The local model is reading your {quiz.items.filter((i) => i.item_type === 'WRITE').length === 1 ? 'sentence' : 'sentences'}.
+            You can keep using the app; you’ll get a notice when the results are ready.
+          </p>
+        </header>
+        <p className="status grading-wait" role="status"><span className="pulse" aria-hidden="true" />Grading…</p>
+        <div className="actions">
+          <button className="btn primary" onClick={onDone}>Back to dashboard</button>
+          {onAgain && <button className="btn" onClick={onAgain}>Start another quiz</button>}
+        </div>
+      </>
+    )
+  }
+
+  // ---------- answers saved, grading failed (the model was down) ----------
   if (quiz.status === 'SUBMITTED') {
     return (
       <>
@@ -169,6 +202,7 @@ export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title 
         <h1>{quiz.correct} of {total} correct</h1>
         <p className="lede num">{awardLine(quiz)}</p>
       </header>
+      {quiz.progress && <ProgressRecap progress={quiz.progress} onThemes={onThemes} />}
       {quiz.grammar_hints_unavailable && (
         <p className="notice" role="status">The grammar checker was unavailable, so your sentences were graded without its hints.</p>
       )}
@@ -202,28 +236,79 @@ export function QuizRunner({ quiz, onChange, onDone, onAgain, onOpenWord, title 
   )
 }
 
-type Props = { onStudy: () => void; onDone: () => void; onOpenWord: (entryId: number) => void }
+type Props = {
+  onStudy: () => void
+  onDone: () => void
+  onOpenWord: (entryId: number) => void
+  onThemes: () => void
+  /** Open this quiz straight away (from a "graded" notice). */
+  initialId?: number | null
+}
 
-export default function Assessment({ onStudy, onDone, onOpenWord }: Props) {
+const KIND_LABEL: Record<AssessmentSummary['kind'], string> = { QUICK: 'Quiz', WARMUP: 'Warm-up', BOSS: 'Boss battle' }
+
+function when(iso: string) {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function RecentQuizzes({ onOpen }: { onOpen: (id: number) => void }) {
+  const [items, setItems] = useState<AssessmentSummary[] | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    api.listAssessments(0, 8, controller.signal).then((p) => setItems(p.items)).catch(() => {})
+    return () => controller.abort()
+  }, [])
+  if (!items || items.length === 0) return null
+  return (
+    <section className="recent-quizzes" aria-labelledby="rq">
+      <h2 id="rq" className="sub">Recent quizzes</h2>
+      <ul className="quiz-history">
+        {items.map((q) => (
+          <li key={q.id}>
+            <button className="bank-row quiz-row" onClick={() => onOpen(q.id)}>
+              <span className="bank-head">{KIND_LABEL[q.kind] ?? 'Quiz'}</span>
+              <span className="bank-meta">{when(q.created_at)}</span>
+              <span className={`strength ${q.status === 'GRADED' ? '' : 'weak'}`}>
+                {q.status === 'GRADED' ? `${q.correct} of ${q.total}` : 'Grading or needs a retry'}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+export default function Assessment({ onStudy, onDone, onOpenWord, onThemes, initialId }: Props) {
   const voice = useSpanishVoice()
   const [quiz, setQuiz] = useState<AssessmentData | null>(null)
   const [focus, setFocus] = useState<QuizFocus>('MIXED')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!!initialId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<{ message: string; needsStudy?: boolean } | null>(null)
 
-  // A quiz whose answers were saved but never graded (the model was down) is picked up again here.
+  async function open(id: number) {
+    setLoading(true)
+    try {
+      setQuiz(await api.getAssessment(id))
+      window.scrollTo({ top: 0 })
+    } catch (err) {
+      setError({ message: err instanceof ApiError ? err.message : 'Could not open that quiz.' })
+    }
+    setLoading(false)
+  }
+
   useEffect(() => {
+    if (!initialId) return
     const controller = new AbortController()
-    api
-      .listAssessments(0, 1, controller.signal)
-      .then(async (page) => {
-        if (page.items[0]?.status === 'SUBMITTED') setQuiz(await api.getAssessment(page.items[0].id, controller.signal))
+    api.getAssessment(initialId, controller.signal)
+      .then(setQuiz)
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError({ message: err instanceof ApiError ? err.message : 'Could not open that quiz.' })
       })
-      .catch(() => {})
       .finally(() => !controller.signal.aborted && setLoading(false))
     return () => controller.abort()
-  }, [])
+  }, [initialId])
 
   async function start() {
     setBusy(true)
@@ -241,7 +326,7 @@ export default function Assessment({ onStudy, onDone, onOpenWord }: Props) {
 
   if (loading) return <p className="status">Loading…</p>
   if (quiz) {
-    return <QuizRunner quiz={quiz} onChange={setQuiz} onDone={onDone} onOpenWord={onOpenWord}
+    return <QuizRunner quiz={quiz} onChange={setQuiz} onDone={onDone} onOpenWord={onOpenWord} onThemes={onThemes}
       onAgain={() => setQuiz(null)} />
   }
 
@@ -277,6 +362,7 @@ export default function Assessment({ onStudy, onDone, onOpenWord }: Props) {
           </div>
         )}
       </div>
+      <RecentQuizzes onOpen={(id) => open(id)} />
     </>
   )
 }

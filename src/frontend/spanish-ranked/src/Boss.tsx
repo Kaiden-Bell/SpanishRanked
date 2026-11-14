@@ -56,7 +56,12 @@ function Outcome({ state, onPractice }: { state: BossState; onPractice: () => vo
   )
 }
 
-export default function Boss({ onDone, onPractice, onOpenWord }: { onDone: () => void; onPractice: () => void; onOpenWord: (id: number) => void }) {
+export default function Boss({ onDone, onPractice, onOpenWord, onThemes }: {
+  onDone: () => void
+  onPractice: () => void
+  onOpenWord: (id: number) => void
+  onThemes: () => void
+}) {
   const voice = useSpanishVoice()
   const [state, setState] = useState<BossState | null>(null)
   const [quiz, setQuiz] = useState<Assessment | null>(null)
@@ -93,7 +98,7 @@ export default function Boss({ onDone, onPractice, onOpenWord }: { onDone: () =>
     return (
       <>
         {graded && state && <Outcome state={state} onPractice={onPractice} />}
-        <QuizRunner quiz={quiz} onChange={setQuiz} onDone={onDone} onOpenWord={onOpenWord} title="Boss battle" />
+        <QuizRunner quiz={quiz} onChange={setQuiz} onDone={onDone} onOpenWord={onOpenWord} onThemes={onThemes} title="Boss battle" />
       </>
     )
   }

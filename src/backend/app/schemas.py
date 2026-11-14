@@ -205,11 +205,15 @@ class AssessmentOut(BaseModel):
     graded_at: str | None
     # Set while a SUBMITTED attempt waits for grading: answers are saved, retry via /grade.
     grading_error: str | None
+    # True while a SUBMITTED attempt waits for (or is being graded by) the background worker.
+    grading: bool = False
     # True when LanguageTool could not check an answer, so grading ran without its hints.
     grammar_hints_unavailable: bool
     correct: int | None
     items: list[AssessmentItemOut]
     award: AwardOut | None
+    # Once graded: what this quiz changed (assessment/progress.py). Only on single-quiz responses.
+    progress: dict | None = None
 
 
 class AssessmentSummary(BaseModel):

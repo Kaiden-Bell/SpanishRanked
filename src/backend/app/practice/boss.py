@@ -35,6 +35,11 @@ def held_rank_index(conn: sqlite3.Connection, user_id: int, total_xp: int) -> in
     """The highest rank whose boss is passed, climbing in order. A rank once won is kept even if XP later
     drops below its threshold (a deleted study session takes its XP back, not the battle)."""
     passed = {r[0] for r in conn.execute("SELECT rank_name FROM boss_passes WHERE user_id = ?", (user_id,))}
+    return held_index_from(passed)
+
+
+def held_index_from(passed: set[str]) -> int:
+    """The held rank index for a set of passed rank names, climbing in order."""
     index = 0
     while index + 1 < len(rules.RANKS) and rules.RANKS[index + 1][1] in passed:
         index += 1

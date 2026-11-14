@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from . import progression, user_settings
+from . import db, progression, user_settings
 from .assessment import grade as grading
+from .assessment import worker
+from .assessment.progress import quiz_progress
 from .deps import CurrentUser, get_db, get_grammar, get_model, ready_user
 from .practice import answer as answering
 from .practice.compose import NeedsModel, NotEnoughMaterial, compose
@@ -30,7 +32,8 @@ def _correct_count(items: list[AssessmentItemOut]) -> int:
     return sum(1 for i in items if i.evidence and all(e.outcome == "HIT" for e in i.evidence))
 
 
-def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int) -> AssessmentOut:
+def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int, *, with_progress: bool = False) -> AssessmentOut:
+    """with_progress adds what the quiz changed (XP, skills, rank); left out of lists, where it would be slow."""
     row = conn.execute(
         "SELECT id, kind, focus, status, created_at, submitted_at, graded_at, grading_error FROM assessments"
         " WHERE id = ? AND user_id = ?",
@@ -72,10 +75,12 @@ def _load(conn: sqlite3.Connection, user_id: int, assessment_id: int) -> Assessm
         submitted_at=row["submitted_at"],
         graded_at=row["graded_at"],
         grading_error=row["grading_error"] if row["status"] == "SUBMITTED" else None,
+        grading=row["status"] == "SUBMITTED" and row["grading_error"] is None,
         grammar_hints_unavailable=hints_missing,
         correct=_correct_count(items) if graded else None,
         items=items,
         award=AwardOut(**vars(award)) if award else None,
+        progress=quiz_progress(conn, user_id, assessment_id, source, row["graded_at"]) if graded and with_progress else None,
     )
 
 
@@ -133,12 +138,53 @@ def list_assessments(
     return AssessmentPage(total=total, items=summaries)
 
 
+@router.get("/activity")
+def activity(
+    since: str = Query("", max_length=40),
+    user: CurrentUser = Depends(ready_user),
+    conn=Depends(get_db),
+):
+    """What the app shell polls while quizzes grade in the background: the ones still grading, and
+    the ones graded after `since` (a timestamp from an earlier response's `now`)."""
+    grading_ids = [r[0] for r in conn.execute(
+        "SELECT id FROM assessments WHERE user_id = ? AND status = 'SUBMITTED' AND grading_error IS NULL ORDER BY id",
+        (user.id,))]
+    graded = []
+    if since:
+        for r in conn.execute(
+            "SELECT id, kind FROM assessments WHERE user_id = ? AND status = 'GRADED' AND graded_at >= ? ORDER BY id",
+            (user.id, since),
+        ):
+            a = _load(conn, user.id, r["id"])
+            graded.append({"id": a.id, "kind": a.kind, "correct": a.correct, "total": len(a.items),
+                           "awarded_xp": a.award.awarded_xp if a.award else 0, "graded_at": a.graded_at})
+    return {"now": db.utc_timestamp(), "grading": grading_ids, "graded": graded}
+
+
 @router.get("/{assessment_id}", response_model=AssessmentOut)
 def get_assessment(assessment_id: int, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)):
-    return _load(conn, user.id, assessment_id)
+    return _load(conn, user.id, assessment_id, with_progress=True)
+
+
+def _needs_model(conn, assessment_id: int) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM assessment_items WHERE assessment_id = ? AND item_type = 'WRITE' AND feedback_json IS NULL LIMIT 1",
+        (assessment_id,),
+    ).fetchone() is not None
 
 
 def _grade(request: Request, conn, user: CurrentUser, assessment_id: int, model, grammar) -> AssessmentOut:
+    grader = request.app.state.grader
+    if not grader.inline and _needs_model(conn, assessment_id):
+        # Free sentences go to the background worker; the learner gets the quiz back at once.
+        status = conn.execute("SELECT status FROM assessments WHERE id = ? AND user_id = ?",
+                              (assessment_id, user.id)).fetchone()["status"]
+        if status == "GENERATED":
+            raise HTTPException(409, "Submit the quiz first.")
+        if status == "SUBMITTED":
+            worker.queue(conn, assessment_id)
+            grader.kick()
+        return _load(conn, user.id, assessment_id)
     try:
         grading.grade_assessment(
             conn, user.id, assessment_id, model, grammar,
@@ -148,7 +194,7 @@ def _grade(request: Request, conn, user: CurrentUser, assessment_id: int, model,
         raise HTTPException(409, str(exc))
     # Grading may have failed. That is not an HTTP error: the answers are saved and the response
     # reports "SUBMITTED" with a grading_error so the client can offer a retry.
-    return _load(conn, user.id, assessment_id)
+    return _load(conn, user.id, assessment_id, with_progress=True)
 
 
 @router.post("/{assessment_id}/submit", response_model=AssessmentOut)

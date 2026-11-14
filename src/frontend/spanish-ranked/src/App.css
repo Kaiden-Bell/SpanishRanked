@@ -120,7 +120,7 @@
   inset: 0;
   background:
     radial-gradient(120% 90% at 80% 20%, rgba(255, 214, 160, 0.28), transparent 55%),
-    linear-gradient(90deg, var(--bg) 0%, rgba(17, 20, 15, 0.55) 40%, rgba(17, 20, 15, 0) 75%);
+    linear-gradient(90deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 40%, transparent 75%);
 }
 
 .scene::after {
@@ -1739,5 +1739,404 @@ input[type='range']:focus {
 @media (max-width: 960px) {
   .lesson-section {
     padding: 1rem 1.1rem;
+  }
+}
+
+/* ---------- quiz grading in the background ---------- */
+
+.nav-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.pulse {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.grading-wait {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.toast {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: min(30rem, calc(100vw - 2rem));
+  padding: 0.85rem 0.85rem 0.85rem 1.15rem;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: toast-in 0.35s var(--ease-out) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+.toast-body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.toast-body strong {
+  font-weight: 600;
+}
+
+.toast-body .num {
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+
+.toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.toast-close {
+  min-width: 44px;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.recent-quizzes {
+  margin-top: 3rem;
+  max-width: 60rem;
+}
+
+.recent-quizzes .sub {
+  margin-bottom: 0.75rem;
+}
+
+.quiz-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.quiz-row .bank-head {
+  font-size: 1.05rem;
+}
+
+/* ---------- progress recap at the end of a quiz ---------- */
+
+.recap-progress {
+  max-width: 46rem;
+  margin-bottom: 1.75rem;
+}
+
+.rp-xp {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rp-skills {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+.rp-skills .skill {
+  grid-template-columns: 5.5rem 1fr 10rem;
+}
+
+.bar.delta {
+  position: relative;
+  height: 8px;
+}
+
+.bar.delta .fill {
+  position: absolute;
+  inset: 0;
+}
+
+/* What was already there before the quiz: muted and still. */
+.bar.delta .fill.prior {
+  background: color-mix(in srgb, var(--accent) 45%, var(--track));
+  animation: none;
+}
+
+/* What this quiz added: grows from the old value to the new one. */
+.bar.delta .fill.gain {
+  animation: grow-from 1.1s 0.3s var(--ease-out) both;
+}
+
+.bar.delta .fill.loss {
+  background: color-mix(in srgb, var(--bad) 70%, transparent);
+  animation: none;
+}
+
+@keyframes grow-from {
+  from {
+    transform: scaleX(var(--from, 0));
+  }
+}
+
+.rank-up {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.25rem;
+  border-radius: var(--radius);
+  background: var(--selected);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.rank-up strong {
+  font-weight: 600;
+}
+
+/* ---------- word bank: adding words, forms and highlights ---------- */
+
+.bank-head-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.add-words {
+  max-width: 46rem;
+  margin-bottom: 2rem;
+}
+
+.add-words textarea {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.aw-preview {
+  min-height: 1.5rem;
+  margin: 0.35rem 0 0.25rem;
+}
+
+.aw-result {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-2);
+}
+
+.aw-skipped {
+  color: var(--ink-3);
+}
+
+.form-match {
+  display: inline-block;
+  margin-left: 0.55rem;
+  padding: 0 0.45rem;
+  border-radius: 3px;
+  font: 500 0.78rem/1.6 var(--font-ui);
+  vertical-align: middle;
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.form-match::before {
+  content: 'as ';
+  font-weight: 400;
+}
+
+.form-list > li {
+  padding: 0.5rem 0.6rem;
+  margin: -0.5rem -0.6rem;
+  border-radius: var(--radius);
+}
+
+.form-sentences {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0 0 0 0.85rem;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.form-sentences li {
+  display: grid;
+  gap: 0.05rem;
+}
+
+.form-sentences [lang='es'] {
+  font: italic 1rem/1.4 var(--font-display);
+}
+
+.ex-tag {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* A searched form, flashed once when its word opens. */
+.flash {
+  animation: flash 1.6s var(--ease-out) both;
+}
+
+@keyframes flash {
+  0%,
+  35% {
+    background-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+/* Reduced motion: no fade, but the form is still marked while it is being pointed at. */
+:root[data-motion='reduce'] .flash {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+/* ---------- settings: themes ---------- */
+
+.theme-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.85rem;
+}
+
+.theme-card {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.5rem 0.5rem 0.7rem;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition: border-color 0.18s, background-color 0.18s;
+}
+
+.theme-card:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--line-strong);
+}
+
+.theme-card[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+
+.theme-card:disabled {
+  cursor: not-allowed;
+}
+
+.theme-card:disabled .theme-preview {
+  filter: grayscale(0.85) brightness(0.7);
+}
+
+.theme-preview {
+  position: relative;
+  display: block;
+  height: 4.75rem;
+  margin-bottom: 0.45rem;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--bg);
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--line);
+}
+
+.tp-ink {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 0.35rem;
+  font: 1.35rem/1 var(--font-display);
+  color: var(--ink);
+}
+
+.tp-accent {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.55rem;
+  width: 1.9rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.tp-surface {
+  position: absolute;
+  right: 0.6rem;
+  top: 0.55rem;
+  width: 2.6rem;
+  height: 1.35rem;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.theme-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.theme-meta {
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+@media (max-width: 760px) {
+  .toast {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    max-width: none;
+  }
+
+  .rp-skills .skill {
+    grid-template-columns: 4.6rem 1fr 7.5rem;
   }
 }

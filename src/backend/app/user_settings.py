@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import db, rules
+from . import db, rules, themes
 
 
 class Settings(BaseModel):
@@ -21,6 +21,8 @@ class Settings(BaseModel):
     listening: bool = True
     # 'system' follows the device's reduced-motion setting; 'reduce' always turns motion off.
     motion: Literal["system", "reduce"] = "system"
+    # One of themes.THEMES, unlocked by rank. Checked against the held rank when saved and when read.
+    theme: str = themes.DEFAULT
 
 
 class SettingsPatch(BaseModel):
@@ -30,6 +32,17 @@ class SettingsPatch(BaseModel):
     warmup_items: int | None = Field(None, ge=3, le=10)
     listening: bool | None = None
     motion: Literal["system", "reduce"] | None = None
+    theme: str | None = Field(None, max_length=40)
+
+
+class ThemeLocked(ValueError):
+    pass
+
+
+def held_index(conn: sqlite3.Connection, user_id: int) -> int:
+    from .practice import boss  # late import: boss builds on the quiz modules
+
+    return boss.held_rank_index(conn, user_id, 0)
 
 
 def load(conn: sqlite3.Connection, user_id: int) -> Settings:
@@ -37,12 +50,18 @@ def load(conn: sqlite3.Connection, user_id: int) -> Settings:
     stored = json.loads(row["settings_json"]) if row else {}
     known = {k: v for k, v in stored.items() if k in Settings.model_fields}
     try:
-        return Settings(**known)
+        out = Settings(**known)
     except ValueError:
-        return Settings()  # a stored value went out of range after a rules change: fall back
+        out = Settings()  # a stored value went out of range after a rules change: fall back
+    if out.theme != themes.DEFAULT and not themes.is_unlocked(out.theme, held_index(conn, user_id)):
+        out = out.model_copy(update={"theme": themes.DEFAULT})  # e.g. after resetting all data
+    return out
 
 
 def save(conn: sqlite3.Connection, user_id: int, patch: SettingsPatch) -> Settings:
+    """Raises ThemeLocked for a theme the learner's rank hasn't unlocked."""
+    if patch.theme is not None and not themes.is_unlocked(patch.theme, held_index(conn, user_id)):
+        raise ThemeLocked("That theme isn't unlocked yet." if patch.theme in themes.BY_ID else "Unknown theme.")
     merged = load(conn, user_id).model_copy(update=patch.model_dump(exclude_none=True))
     merged = Settings(**merged.model_dump())  # re-validate
     with conn:

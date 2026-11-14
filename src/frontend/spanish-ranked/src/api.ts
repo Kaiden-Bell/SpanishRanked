@@ -97,9 +97,34 @@ export type Assessment = {
   correct: number | null
   items: AssessmentItem[]
   award: Award | null
+  /** SUBMITTED and waiting for (or being graded by) the background worker. */
+  grading: boolean
+  /** Once graded: what this quiz changed. */
+  progress: QuizProgress | null
 }
 
-export type AssessmentSummary = Pick<Assessment, 'id' | 'status' | 'created_at' | 'graded_at' | 'correct'> & { total: number }
+export type SkillSnapshot = { status: 'ASSESSED' | 'NOT_ASSESSED'; score: number | null; answers_needed: number }
+
+export type QuizProgress = {
+  xp: {
+    before: number
+    after: number
+    gained: number
+    rank: string
+    band_min: number
+    band_max: number | null
+    next_rank: string | null
+    boss_ready: boolean
+  }
+  skills: { key: string; label: string; kind: 'SKILL' | 'AREA'; before: SkillSnapshot; after: SkillSnapshot }[]
+  rank_up: { rank: string; theme: { id: string; label: string } | null } | null
+}
+
+export type AssessmentSummary = Pick<Assessment, 'id' | 'kind' | 'status' | 'created_at' | 'graded_at' | 'correct'> & { total: number }
+
+export type GradedNotice = { id: number; kind: Assessment['kind']; correct: number | null; total: number; awarded_xp: number; graded_at: string }
+
+export type Activity = { now: string; grading: number[]; graded: GradedNotice[] }
 
 export type SystemStatus = {
   database: 'ok' | 'degraded' | 'down'
@@ -124,6 +149,16 @@ export type BankSummary = {
   created_at: string
   last_seen_at: string | null
   due_at: string | null
+  added_manually: boolean
+  /** With a search: the form inside this entry that matched, when it isn't the headword ("quieres" in querer). */
+  matched_form?: string | null
+}
+
+export type FormSentence = { es: string; en: string | null; source: 'YOURS' | 'TATOEBA' | 'WIKTIONARY' }
+
+export type BankAddResult = {
+  added: { text: string; entry_id: number; headword: string; kind: 'WORD' | 'PHRASE'; typed: string; merged: boolean; words: number }[]
+  skipped: { text: string; skipped: string }[]
 }
 
 export type FormAnalysis = {
@@ -156,7 +191,7 @@ export type Conjugation = {
 }
 
 export type BankDetail = BankSummary & {
-  forms: { form: string; meaning: string | null; analyses: FormAnalysis[]; clitics: string[]; also: string[] }[]
+  forms: { form: string; meaning: string | null; analyses: FormAnalysis[]; clitics: string[]; also: string[]; sentences: FormSentence[] }[]
   breakdown: { surface: string; lemma: string; pos: string | null; entry_id: number | null; translation: string | null; readings: FormAnalysis[] }[]
   senses: { pos: string; senses: { gloss: string }[] }[]
   user_translation: string | null
@@ -219,7 +254,10 @@ export type UserSettings = {
   warmup_items: number
   listening: boolean
   motion: 'system' | 'reduce'
+  theme: string
 }
+
+export type Theme = { id: string; label: string; rank_name: string; scene: string | null; unlocked: boolean }
 
 export type StudySessionInput = {
   mode: StudySession['mode']
@@ -352,6 +390,14 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
   return data as T
 }
 
+/** Fired when a quiz goes off to be graded in the background, so the app shell can watch for it. */
+export const QUIZ_GRADING_EVENT = 'quiz-grading'
+
+function announceGrading(quiz: Assessment): Assessment {
+  if (quiz.grading) window.dispatchEvent(new CustomEvent(QUIZ_GRADING_EVENT, { detail: { id: quiz.id } }))
+  return quiz
+}
+
 export const api = {
   me: (signal?: AbortSignal) => request<User>('GET', '/api/auth/me', undefined, signal),
   login: (username: string, password: string) =>
@@ -365,6 +411,7 @@ export const api = {
   systemStatus: (signal?: AbortSignal) => request<SystemStatus>('GET', '/api/system/status', undefined, signal),
   settings: (signal?: AbortSignal) => request<UserSettings>('GET', '/api/settings', undefined, signal),
   saveSettings: (patch: Partial<UserSettings>) => request<UserSettings>('PATCH', '/api/settings', patch),
+  themes: (signal?: AbortSignal) => request<Theme[]>('GET', '/api/settings/themes', undefined, signal),
   signOutOthers: () => request<{ signed_out: number }>('POST', '/api/settings/sign-out-others'),
   resetAll: (password: string, confirm: string) =>
     request<{ deleted: { study_sessions: number; words: number; quizzes: number } }>('POST', '/api/settings/reset', { password, confirm }),
@@ -377,7 +424,7 @@ export const api = {
   createAssessment: (body: { focus?: QuizFocus; listening?: boolean } = {}) =>
     request<Assessment>('POST', '/api/assessments', body),
   answerItem: (id: number, item_id: number, text: string) =>
-    request<Assessment>('POST', `/api/assessments/${id}/answers`, { item_id, text }),
+    request<Assessment>('POST', `/api/assessments/${id}/answers`, { item_id, text }).then(announceGrading),
   listAssessments: (offset: number, limit = 20, signal?: AbortSignal) =>
     request<{ total: number; items: AssessmentSummary[] }>(
       'GET',
@@ -388,8 +435,10 @@ export const api = {
   getAssessment: (id: number, signal?: AbortSignal) =>
     request<Assessment>('GET', `/api/assessments/${id}`, undefined, signal),
   submitAssessment: (id: number, answers: { item_id: number; text: string }[]) =>
-    request<Assessment>('POST', `/api/assessments/${id}/submit`, { answers }),
-  gradeAssessment: (id: number) => request<Assessment>('POST', `/api/assessments/${id}/grade`),
+    request<Assessment>('POST', `/api/assessments/${id}/submit`, { answers }).then(announceGrading),
+  gradeAssessment: (id: number) => request<Assessment>('POST', `/api/assessments/${id}/grade`).then(announceGrading),
+  assessmentActivity: (since: string, signal?: AbortSignal) =>
+    request<Activity>('GET', `/api/assessments/activity?since=${encodeURIComponent(since)}`, undefined, signal),
   guided: (signal?: AbortSignal) => request<GuidedOverview>('GET', '/api/guided', undefined, signal),
   guidedUnit: (id: string, pack?: string, signal?: AbortSignal) =>
     request<GuidedLesson>('GET', `/api/guided/units/${encodeURIComponent(id)}${pack ? `?pack=${encodeURIComponent(pack)}` : ''}`, undefined, signal),
@@ -402,6 +451,8 @@ export const api = {
   getBankEntry: (id: number, signal?: AbortSignal) => request<BankDetail>('GET', `/api/bank/${id}`, undefined, signal),
   patchBankEntry: (id: number, body: { user_translation?: string; note?: string }) =>
     request<BankDetail>('PATCH', `/api/bank/${id}`, body),
+  addToBank: (terms: string[]) => request<BankAddResult>('POST', '/api/bank', { terms }),
+  removeFromBank: (id: number) => request<void>('DELETE', `/api/bank/${id}`),
   lookup: (term: string, signal?: AbortSignal) =>
     request<LookupPreview>('GET', `/api/lookup?term=${encodeURIComponent(term)}`, undefined, signal),
   deleteSession: (id: number) =>

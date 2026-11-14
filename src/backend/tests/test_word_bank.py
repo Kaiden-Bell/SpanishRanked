@@ -468,3 +468,96 @@ def test_startup_repairs_terms_saved_before_parsing(settings):
             assert conn.execute("SELECT COUNT(*) FROM pending_jobs").fetchone()[0] == 0
     finally:
         client.__exit__(None, None, None)
+
+
+# ---------------------------------------------------------------- adding words by hand
+
+
+def add(client, *terms):
+    r = client.post("/api/bank", json={"terms": list(terms)})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_forms_added_by_hand_join_one_dictionary_entry(online):
+    first = add(online, "quiero")
+    assert first["added"][0]["headword"] == "querer" and first["added"][0]["merged"] is False
+    again = add(online, "quieres")
+    assert again["added"][0] == {**again["added"][0], "headword": "querer", "typed": "quieres", "merged": True}
+    words = online.get("/api/bank", params={"kind": "WORD"}).json()
+    assert [i["headword"] for i in words["items"]] == ["querer"]
+    e = words["items"][0]
+    assert sorted(e["forms_seen"]) == ["quieres", "quiero"] and e["added_manually"] is True and e["strength"] == "new"
+    d = online.get(f"/api/bank/{e['id']}").json()
+    assert d["conjugation"] and set(d["conjugation"]["seen"]) == {"quiero", "quieres"}
+    assert d["sessions_count"] == 0
+
+
+def test_adding_by_hand_reads_terms_like_a_study_session(online):
+    out = add(online, "te extraño - I miss you", "the", "la maleta - suitcase")
+    assert [a["headword"] for a in out["added"]] == ["te extraño", "maleta"]  # an article + noun is the word
+    assert entry(online, "maleta")["translation"] == "suitcase"
+    assert out["added"][0]["kind"] == "PHRASE" and out["added"][0]["words"] == 1
+    assert [s["text"] for s in out["skipped"]] == ["the"] and "English" in out["skipped"][0]["skipped"]
+    phrase = entry(online, "te extraño")
+    assert phrase["translation"] == "I miss you"
+    assert entry(online, "extrañar")["added_manually"] is False  # a word inside a phrase, not added on its own
+    assert online.post("/api/bank", json={"terms": []}).status_code == 422
+    assert online.post("/api/bank", json={"terms": ["x" * 101]}).status_code == 422
+
+
+def test_adding_pays_no_xp(online):
+    add(online, "quiero", "maleta")
+    assert online.get("/api/progress").json()["total_xp"] == 0
+
+
+def test_deleting_a_session_never_removes_a_hand_added_word(online):
+    add(online, "quiero")
+    s = log_session(online, ["quieres", "viajar", "comer"])
+    assert online.delete(f"/api/study-sessions/{s['id']}").status_code == 200
+    heads = [i["headword"] for i in online.get("/api/bank").json()["items"]]
+    assert heads == ["querer"]
+
+
+def test_only_hand_added_entries_can_be_removed(online):
+    log_session(online, ["viajar", "comer", "vivir"])
+    add(online, "quiero", "te extraño")
+    assert online.delete(f"/api/bank/{entry(online, 'viajar')['id']}").status_code == 409
+    assert online.delete(f"/api/bank/{entry(online, 'querer')['id']}").status_code == 204
+    assert online.delete(f"/api/bank/{entry(online, 'te extraño')['id']}").status_code == 204
+    heads = [i["headword"] for i in online.get("/api/bank", params={"limit": 200}).json()["items"]]
+    assert sorted(heads) == ["comer", "viajar", "vivir"]  # the phrase took its word along
+    assert online.delete("/api/bank/99999").status_code == 404
+
+
+def test_hand_added_words_sort_by_when_they_were_added(online, raw_db):
+    log_session(online, ["viajar", "comer", "vivir"])
+    raw_db.execute("UPDATE study_sessions SET created_at = '2020-01-01T00:00:00Z'")
+    raw_db.commit()
+    add(online, "quiero")
+    heads = [i["headword"] for i in online.get("/api/bank").json()["items"]]
+    assert heads[0] == "querer" and sorted(heads[1:]) == ["comer", "viajar", "vivir"]
+
+
+# ---------------------------------------------------------------- one entry per lemma: search and forms
+
+
+def test_search_by_any_form_finds_the_infinitive_and_says_which_form(online):
+    log_session(online, ["quiero", "viajar", "comer"], sentences=("Quiero viajar.", "¿Quieres ir?"))
+    hit = online.get("/api/bank", params={"q": "quiero"}).json()["items"]
+    assert [(i["headword"], i["matched_form"]) for i in hit] == [("querer", "quiero")]
+    # Never logged, but a form of a verb in the bank.
+    hit = online.get("/api/bank", params={"q": "quieren"}).json()["items"]
+    assert [(i["headword"], i["matched_form"]) for i in hit] == [("querer", "quieren")]
+    # Searching the headword or a meaning has nothing to highlight.
+    assert online.get("/api/bank", params={"q": "querer"}).json()["items"][0]["matched_form"] is None
+    assert online.get("/api/bank").json()["items"][0]["matched_form"] is None
+
+
+def test_each_form_lists_the_sentences_that_use_it(online):
+    log_session(online, ["quiero", "quieres", "viajar"], sentences=("Quiero viajar.", "¿Quieres ir?", "Yo te quiero."))
+    d = online.get(f"/api/bank/{entry(online, 'querer')['id']}").json()
+    by_form = {f["form"]: [s["es"] for s in f["sentences"]] for f in d["forms"]}
+    assert by_form["quiero"] == ["Quiero viajar.", "Yo te quiero."]
+    assert by_form["quieres"] == ["¿Quieres ir?"]
+    assert all(s["source"] == "YOURS" for f in d["forms"] for s in f["sentences"])
