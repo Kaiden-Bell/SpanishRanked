@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from . import db, progression
+from .curriculum import syllabus
 from .deps import CurrentUser, get_db, ready_user
 from .lexicon import bank
 from .schemas import AwardOut, StudySessionCreated, StudySessionIn, StudySessionOut, StudySessionPage, normalize_token
@@ -51,7 +52,7 @@ def _hydrate(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[StudySes
 
 
 _COLUMNS = (
-    "id, language_code, mode, activity_type, duration_minutes, context_text, created_at, completed_at"
+    "id, language_code, mode, activity_type, duration_minutes, context_text, created_at, completed_at, unit_id"
 )
 
 
@@ -60,15 +61,17 @@ def create_study_session(
     body: StudySessionIn, request: Request, user: CurrentUser = Depends(ready_user), conn=Depends(get_db)
 ):
     now = datetime.now(timezone.utc)
+    if body.unit_id and syllabus.load().get(body.unit_id) is None:
+        raise HTTPException(422, "Unknown guided-study unit.")
     # One transaction: the session, its terms/concepts, its sentences and its XP award are saved
     # together or not at all.
     with conn:
         session_id = conn.execute(
             "INSERT INTO study_sessions (user_id, language_code, mode, activity_type, duration_minutes,"
-            " context_text, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " context_text, completed_at, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user.id, body.language_code, body.mode, body.activity_type,
-                body.duration_minutes, body.context_text, db.utc_timestamp(now),
+                body.duration_minutes, body.context_text, db.utc_timestamp(now), body.unit_id,
             ),
         ).lastrowid
         typed: list[tuple[int, str]] = []

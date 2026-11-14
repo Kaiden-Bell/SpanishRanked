@@ -1,0 +1,21 @@
+{
+  "id": "chevere",
+  "title": "¡Chévere! Introductory Spanish I & II",
+  "upstream_title": "Introductory Spanish I",
+  "language": "es",
+  "authors": [
+    "Erica Brown",
+    "Alejandra Escudero",
+    "María Cristina Montoya",
+    "Elizabeth Small"
+  ],
+  "copyright_holder": "Lumen Learning",
+  "source_url": "https://courses.lumenlearning.com/suny-oneonta-spanish1-2-print-sp2021/",
+  "license": {
+    "code": "CC BY 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "changes": "Converted from HTML to Markdown; excerpted to vocabulary, grammar, reading and culture pages; images, audio, video and interactive exercises removed; headings reformatted.",
+  "retrieved": "2026-11-13",
+  "format": 1
+}

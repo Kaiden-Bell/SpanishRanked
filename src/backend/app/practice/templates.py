@@ -141,12 +141,13 @@ def reverse_mc(e: EntryCtx, pool: Pool, rng: random.Random) -> Item | None:
 
 def _verb_target(e: EntryCtx, rng: random.Random) -> tuple[str, str, str] | None:
     """(form, tense, person) to ask about: a form the learner met if it is a plain finite form,
-    otherwise a core-tense form from the table."""
+    otherwise a core-tense form from the table. A guided unit narrows this to its tenses."""
+    allowed = e.focus_tenses or CORE_TENSES
     for form, analysis in rng.sample(e.forms, len(e.forms)):
         for f in analysis.get("forms", []):
-            if f["tense"] in CORE_TENSES and f["person"] in DRILL_PERSONS and not analysis.get("clitics"):
+            if f["tense"] in allowed and f["person"] in DRILL_PERSONS and not analysis.get("clitics"):
                 return form, f["tense"], f["person"]
-    tense = rng.choice(["pres", "pret", "impf", "fut"])
+    tense = rng.choice(list(e.focus_tenses) or ["pres", "pret", "impf", "fut"])
     person = rng.choice(DRILL_PERSONS)
     cell = e.table["tenses"].get(tense, {}).get(person)
     return (cell[0], tense, person) if cell else None
@@ -178,7 +179,7 @@ def conjugate(e: EntryCtx, pool: Pool, rng: random.Random) -> Item | None:
     if not e.is_verb:
         return None
     seen = {(f["tense"], f["person"]) for _, a in e.forms for f in a.get("forms", [])}
-    tenses = list(dict.fromkeys([t for t, _ in seen if t in CORE_TENSES] + ["pres", "pret"]))
+    tenses = list(e.focus_tenses) or list(dict.fromkeys([t for t, _ in seen if t in CORE_TENSES] + ["pres", "pret"]))
     tense = rng.choice(tenses)
     people = [p for p in DRILL_PERSONS if (tense, p) not in seen] or list(DRILL_PERSONS)
     person = rng.choice(people)

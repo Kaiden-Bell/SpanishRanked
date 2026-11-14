@@ -28,7 +28,8 @@ If you already run Ollama on the host, skip `--profile ollama` and the `pull`, a
 
 ## Using it
 
-1. **Start Study Session**: choose Self-Study or Guided Study (both use the same form in Level 1), then enter the duration, activity, context, 3–5 words or phrases, and 2–3 sentences you wrote.
+1. **Start Study Session**: enter the duration, activity, context, 3–5 words or phrases, and 2–3 sentences you wrote.
+1. **Guided** is an optional path of 48 units, from greetings to the subjunctive. Each unit has a short textbook lesson, a form to log it, and a quiz on its words and tenses. Your self-study counts toward it. See [docs/GUIDED_STUDY.md](docs/GUIDED_STUDY.md), including how to add your own textbook as a content pack.
 2. **Words** is your word bank. Search it, open a word to see what the form you met means, its conjugation table, examples and your history with it, and add your own translation. Each term you type in the study form shows a quick lookup as you type.
 3. **History** lists everything you logged. Delete a session logged by mistake: its XP is taken back, and words that only it added leave the word bank. Quiz results stay.
 4. **Quiz** builds five short questions from your word bank, mixing types:
@@ -113,6 +114,10 @@ src = sqlite3.connect('/data/languageai.db'); dst = sqlite3.connect('/tmp/backup
 src.backup(dst); dst.close()"
 docker compose cp languageai:/tmp/backup.db ./languageai-backup.db
 ```
+
+## Lesson content
+
+The bundled guided-study lessons come from *¡Chévere! Introductory Spanish I & II* by Erica Brown, Alejandra Escudero, María Cristina Montoya and Elizabeth Small, © Lumen Learning, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They were converted to Markdown and excerpted, and images, audio, video and exercises were removed. A few sections adapt CC BY-SA text; see `src/backend/content/packs/chevere/ATTRIBUTION.md`. The lesson content is licensed separately from the code.
 
 ## Development
 

@@ -187,6 +187,15 @@ The endpoint is `POST /api/assessments/{id}/answers`.
   - `Boss.tsx`
 - `GET /api/progress` reports the rank held, not the rank reached by XP.
 
+## Guided study (built, Nov 13, 2026)
+
+An optional, research-ordered path: 48 units in four stages. Each pairs a lesson from a content pack with unit practice built from the learner's own words. Progress is computed from evidence and never stored. Design, the reasoning behind the order, and the content-pack format are in [GUIDED_STUDY.md](GUIDED_STUDY.md).
+
+- The bundled pack is *¡Chévere!* (CC BY 4.0). It covers 35 units; the commands, subjunctive and hypothetical units still need lessons.
+- Owners can add packs under `<data dir>/packs`.
+- Migration V10 tags study sessions and quizzes with `unit_id`.
+- Embeddings were considered for matching sessions to a textbook and deferred. Matching on lemmas and tenses needs no model. If embeddings are added later, they go through Ollama `/api/embed`, so the app image does not grow.
+
 ## Not built yet
 
 - Speaking, with no microphone input. Speaking stays "Not yet assessed".

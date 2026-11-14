@@ -40,6 +40,8 @@ class StudySessionIn(BaseModel):
     # Multi-word terms to save as separate words only, without a phrase entry.
     words_only: list[_text(200)] = Field(default_factory=list, max_length=5)
     sentences: list[_text(300)] = Field(min_length=2, max_length=3)
+    # Guided study: the syllabus unit this lesson was for (curriculum/units.json).
+    unit_id: Annotated[str, StringConstraints(pattern=r"^u\d{2}$")] | None = None
 
     @field_validator("context_text")
     @classmethod
@@ -57,6 +59,8 @@ class StudySessionIn(BaseModel):
     def _words_only_are_terms(self):
         if not {normalize_token(w) for w in self.words_only} <= {normalize_token(t) for t in self.terms}:
             raise ValueError("words_only must list terms from this session")
+        if self.unit_id and self.mode != "GUIDED_STUDY":
+            raise ValueError("unit_id is only for guided study")
         return self
 
     @field_validator("terms")
@@ -78,6 +82,7 @@ class StudySessionOut(BaseModel):
     sentences: list[str]
     created_at: str
     completed_at: str | None
+    unit_id: str | None = None
 
 
 class StudySessionPage(BaseModel):

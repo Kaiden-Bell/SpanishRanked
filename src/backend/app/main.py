@@ -15,6 +15,9 @@ from .lexicon.sources import LexiconSources
 from .lexicon.verbs import VerbData
 from .routes_assessments import router as assessments_router
 from .routes_bank import router as bank_router
+from .routes_guided import router as guided_router
+from .curriculum import packs as content_packs
+from .curriculum import syllabus
 from .routes_settings import router as settings_router
 from .routes_boss import router as boss_router
 from .routes_recap import router as recap_router
@@ -67,6 +70,8 @@ def create_app(
         settings.online_lookups, settings.lookup_timeout, contact=settings.lookup_contact
     )
     app.state.enricher = Enricher(settings.db_path, app.state.sources, app.state.verbs, inline=enrich_inline)
+    # Guided-study lessons: the bundled packs plus any the owner added under <data dir>/packs.
+    app.state.packs = content_packs.load_all(syllabus.load(), [settings.data_dir / "packs"])
 
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -77,6 +82,7 @@ def create_app(
     app.include_router(recap_router)
     app.include_router(boss_router)
     app.include_router(settings_router)
+    app.include_router(guided_router)
 
     @app.get("/api/health")
     def health():

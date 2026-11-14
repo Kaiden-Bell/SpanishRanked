@@ -4,6 +4,7 @@ import { api, setCsrfToken, setSignedOutHandler, type Award, type User } from '.
 import Assessment from './Assessment'
 import Dashboard from './Dashboard'
 import ChangePassword from './ChangePassword'
+import Guided from './Guided'
 import History from './History'
 import Login from './Login'
 import NewSession from './NewSession'
@@ -13,11 +14,12 @@ import Settings from './Settings'
 import Warmup from './Warmup'
 import WordBank from './WordBank'
 
-type View = 'dashboard' | 'history' | 'new' | 'quiz' | 'words' | 'warmup' | 'boss' | 'settings'
+type View = 'dashboard' | 'history' | 'new' | 'guided' | 'quiz' | 'words' | 'warmup' | 'boss' | 'settings'
 
 const NAV: { view: View; label: string }[] = [
   { view: 'dashboard', label: 'Dashboard' },
   { view: 'new', label: 'Study' },
+  { view: 'guided', label: 'Guided' },
   { view: 'quiz', label: 'Quiz' },
   { view: 'words', label: 'Words' },
   { view: 'history', label: 'History' },
@@ -110,6 +112,7 @@ function App() {
         }}
       />
     )
+  else if (view === 'guided') body = <Guided onOpenWord={openWord} />
   else if (view === 'words') body = <WordBank key={wordId ?? 'list'} initialId={wordId} onStudy={() => go('new')} />
   else if (view === 'history') body = <History onStart={() => go('new')} />
   else if (view === 'quiz')

@@ -305,8 +305,18 @@ CREATE TABLE user_settings (
 );
 """
 
+# Guided study (docs/GUIDED_STUDY.md). A guided lesson is a study session tagged with its syllabus
+# unit; a unit quiz is an assessment tagged the same way. Unit progress is computed from these and
+# the evidence, never stored, so deleting a session or quiz needs no extra cleanup.
+SCHEMA_V10 = """
+ALTER TABLE study_sessions ADD COLUMN unit_id TEXT;
+ALTER TABLE assessments ADD COLUMN unit_id TEXT;
+CREATE INDEX idx_study_sessions_unit ON study_sessions (user_id, unit_id);
+"""
+
 # Append new migrations; never edit one that has shipped. user_version is the count applied.
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9]
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9,
+              SCHEMA_V10]
 
 
 def utc_timestamp(moment: datetime | None = None) -> str:

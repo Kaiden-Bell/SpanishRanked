@@ -11,6 +11,8 @@ export type StudySession = {
   sentences: string[]
   created_at: string
   completed_at: string | null
+  /** Guided study: the syllabus unit this lesson was for. */
+  unit_id?: string | null
 }
 
 export type Award = { base_xp: number; multiplier: number; awarded_xp: number; capped: boolean }
@@ -84,7 +86,7 @@ export type QuizFocus = 'MIXED' | 'SENTENCES' | 'READING' | 'LISTENING' | 'WRITI
 export type Assessment = {
   id: number
   kind: 'QUICK' | 'WARMUP' | 'BOSS'
-  focus: QuizFocus
+  focus: QuizFocus | 'UNIT'
   /** GENERATED = waiting for answers, SUBMITTED = answers saved but not graded yet, GRADED = done. */
   status: 'GENERATED' | 'SUBMITTED' | 'GRADED' | 'FAILED'
   created_at: string
@@ -227,6 +229,56 @@ export type StudySessionInput = {
   terms: string[]
   sentences: string[]
   words_only?: string[]
+  unit_id?: string
+}
+
+export type UnitStatus = 'new' | 'started' | 'practicing' | 'solid'
+
+export type GuidedUnit = {
+  id: string
+  n: number
+  stage: number
+  title: string
+  summary: string
+  confidence: string
+  prereqs: string[]
+  tenses: string[]
+  lemmas: string[]
+  status: UnitStatus
+  unlocked: boolean
+  lessons: number
+  words_known: number
+  answers: number
+  score: number | null
+  has_lesson: boolean
+}
+
+export type GuidedOverview = {
+  stages: { n: number; title: string; lemma_target: number }[]
+  units: GuidedUnit[]
+  suggestion: { unit_id: string; reason: string } | null
+  packs: { id: string; title: string; bundled: boolean; units: number }[]
+}
+
+export type License = { code: string; url?: string }
+
+export type LessonSection = {
+  path: string
+  title: string
+  kind: 'context' | 'grammar' | 'vocabulary' | 'reading' | 'culture'
+  license: License
+  source_url: string | null
+  extra_attribution: string[]
+  markdown: string
+}
+
+export type GuidedLesson = {
+  unit: GuidedUnit
+  lesson: {
+    pack: { id: string; title: string; attribution: string; license: License; source_url: string | null }
+    sections: LessonSection[]
+  } | null
+  other_packs: { id: string; title: string }[]
 }
 
 export const ACTIVITY_TYPES = [
@@ -338,6 +390,10 @@ export const api = {
   submitAssessment: (id: number, answers: { item_id: number; text: string }[]) =>
     request<Assessment>('POST', `/api/assessments/${id}/submit`, { answers }),
   gradeAssessment: (id: number) => request<Assessment>('POST', `/api/assessments/${id}/grade`),
+  guided: (signal?: AbortSignal) => request<GuidedOverview>('GET', '/api/guided', undefined, signal),
+  guidedUnit: (id: string, pack?: string, signal?: AbortSignal) =>
+    request<GuidedLesson>('GET', `/api/guided/units/${encodeURIComponent(id)}${pack ? `?pack=${encodeURIComponent(pack)}` : ''}`, undefined, signal),
+  unitQuiz: (id: string) => request<Assessment>('POST', `/api/guided/units/${encodeURIComponent(id)}/quiz`),
   listBank: (params: { q?: string; kind?: 'WORD' | 'PHRASE'; sort?: 'recent' | 'alpha' | 'weak'; offset?: number; limit?: number }, signal?: AbortSignal) => {
     const qs = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))

@@ -38,6 +38,8 @@ class EntryCtx:
     examples: list[Example] = field(default_factory=list)
     table: dict | None = None  # verb conjugation table
     phrase_words: list[dict] = field(default_factory=list)  # for phrases: the analysed words
+    # Set by a guided-unit quiz: verb questions only ask about these tenses. Empty means any.
+    focus_tenses: tuple[str, ...] = ()
 
     @property
     def is_verb(self) -> bool:

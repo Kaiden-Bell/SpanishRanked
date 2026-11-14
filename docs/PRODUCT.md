@@ -17,7 +17,7 @@ Language AI turns material a learner already consumes into recorded practice and
 Level 1 succeeds when a user can complete that loop entirely on their own machine, with no account and no cloud AI provider.
 
 ## Positioning
-Learning is tracked from whatever the learner already studies, with no fixed curriculum. The backend, not the language model, owns XP, rank and streaks. It is self-hosted, with no cloud AI and no external account; dictionary lookups are the only online calls.
+Learning is tracked from whatever the learner already studies. An optional guided path (docs/GUIDED_STUDY.md) offers a research-ordered syllabus with textbook lessons, but it is never required, and self-study counts toward it. The backend, not the language model, owns XP, rank and streaks. It is self-hosted, with no cloud AI and no external account; dictionary lookups are the only online calls.
 
 ## Operating Context
 - One Docker container: React/TypeScript frontend, Python/FastAPI backend, SQLite on a persistent volume, local text-model inference, and LanguageTool as an advisory grammar checker.
@@ -46,7 +46,7 @@ Name: Language AI. Spanish is the first language. Authority for scope and rules:
 
 ## Product Principles
 1. Progress is evidence-based: never claim mastery or proficiency that was not demonstrated.
-2. The learner's own material drives everything; no imposed curriculum.
+2. The learner's own material drives everything. Guided study suggests an order but never imposes one: units unlock softly and practice is built from the learner's own words.
 3. Rewards are earned by real study, never by presence, and should never pressure.
 4. The system is auditable and local: original inputs are kept, and the backend (not the model) decides XP.
 5. Built to be forked: language-specific content must stay configurable so other learners can add their own languages.

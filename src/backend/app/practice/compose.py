@@ -37,7 +37,9 @@ class NeedsModel(Exception):
 
 
 def choose_items(entries, *, n: int, focus: str, listening: bool, allow_write: bool, now: datetime,
-                 rng: random.Random, only: set[str] | None = None) -> list[Item]:
+                 rng: random.Random, only: set[str] | None = None, per_entry: int = 1) -> list[Item]:
+    """per_entry > 1 lets an entry come back as a different question type in the same quiz. Guided
+    units use it: new material needs several retrievals per session, review needs only one."""
     allowed = set(only) if only else set(FOCUS_TYPES[focus])
     if not listening:
         allowed -= LISTENING_TYPES
@@ -52,18 +54,21 @@ def choose_items(entries, *, n: int, focus: str, listening: bool, allow_write: b
     pool = Pool(entries)
     used, by_modality, items, previous = Counter(), Counter(), [], None
     candidates = pick(entries, now, n * 3, rng)
-    done: set[int] = set()
+    asked: Counter = Counter()  # questions per entry
+    asked_types: set[tuple[int, str]] = set()
     # First pass keeps the quiz varied; the second lets entries that only fit an already-used type in,
-    # so a small bank isn't turned away. Either way an entry gets at most one question: no padding.
-    for strict in (True, False):
+    # so a small bank isn't turned away. An entry gets at most per_entry questions, each of a
+    # different type: no padding.
+    for strict in (True,) + (False,) * per_entry:
         for entry in candidates:
             if len(items) >= n:
                 break
-            if entry.id in done:
+            if asked[entry.id] >= per_entry:
                 continue
             limit = max_per_type if strict else n
             options = [t for t in allowed
-                       if used[t] < (max_write if t == "WRITE" else limit) and (single or not strict or t != previous)]
+                       if used[t] < (max_write if t == "WRITE" else limit) and (single or not strict or t != previous)
+                       and (entry.id, t) not in asked_types]
             # Spread skills first, then types; shuffle breaks ties so quizzes differ.
             rng.shuffle(options)
             options.sort(key=lambda t: (by_modality[MODALITY[t]], used[t]))
@@ -71,7 +76,8 @@ def choose_items(entries, *, n: int, focus: str, listening: bool, allow_write: b
                 item = BUILDERS[t](entry, pool, rng)
                 if item:
                     items.append(item)
-                    done.add(entry.id)
+                    asked[entry.id] += 1
+                    asked_types.add((entry.id, t))
                     used[t] += 1
                     by_modality[item.modality] += 1
                     previous = t
@@ -80,12 +86,13 @@ def choose_items(entries, *, n: int, focus: str, listening: bool, allow_write: b
 
 
 def save(conn: sqlite3.Connection, user_id: int, items: list[Item], *, kind: str, focus: str,
-         boss_attempt_id: int | None = None, stages: list[str | None] | None = None) -> int:
+         boss_attempt_id: int | None = None, stages: list[str | None] | None = None,
+         unit_id: str | None = None) -> int:
     with conn:
         assessment_id = conn.execute(
-            "INSERT INTO assessments (user_id, language_code, status, kind, focus, boss_attempt_id)"
-            " VALUES (?, 'es', 'GENERATED', ?, ?, ?)",
-            (user_id, kind, focus, boss_attempt_id),
+            "INSERT INTO assessments (user_id, language_code, status, kind, focus, boss_attempt_id, unit_id)"
+            " VALUES (?, 'es', 'GENERATED', ?, ?, ?, ?)",
+            (user_id, kind, focus, boss_attempt_id, unit_id),
         ).lastrowid
         for i, item in enumerate(items):
             conn.execute(
@@ -120,3 +127,37 @@ def compose(conn: sqlite3.Connection, verbs: VerbData, user_id: int, *, kind: st
             "Not enough material for this kind of quiz yet. Log a few more words, or try a mixed quiz."
         )
     return save(conn, user_id, items, kind=kind, focus=focus)
+
+
+UNIT_QUESTIONS_PER_ENTRY = 3
+
+
+def compose_unit(conn: sqlite3.Connection, verbs: VerbData, user_id: int, unit, *, listening: bool = True,
+                 model_ok: bool = True, n: int | None = None, rng: random.Random | None = None,
+                 now: datetime | None = None) -> int:
+    """A quiz on one guided-study unit (curriculum/syllabus.py Unit): the learner's entries for the
+    unit's key words, plus, for a unit about a tense other than the present, any verb drilled in
+    that tense. Each entry may come back as up to three different question types."""
+    from ..lexicon.grammar_terms import TENSES
+
+    rng = rng or random.Random()
+    now = now or datetime.now(timezone.utc)
+    n = n or rules.QUIZ_ITEMS
+    entries = load_entries(conn, verbs, user_id)
+    finite = tuple(t for t in unit.tenses if t in TENSES)
+    drills_tense = bool(unit.drilled_tenses)
+    lemmas = set(unit.lemmas)
+    if not lemmas and not finite:
+        chosen = entries  # review and capstone units: everything
+    else:
+        chosen = [e for e in entries if (e.kind == "WORD" and e.token in lemmas) or (drills_tense and e.is_verb)]
+    for e in chosen:
+        if e.is_verb:
+            e.focus_tenses = finite
+    items = choose_items(chosen, n=n, focus="MIXED", listening=listening, allow_write=model_ok, now=now, rng=rng,
+                         per_entry=UNIT_QUESTIONS_PER_ENTRY)
+    if len(items) < min(MIN_ITEMS, n):
+        raise NotEnoughMaterial(
+            "Not enough of this unit's words in your word bank yet. Log the lesson with a few of its key words first."
+        )
+    return save(conn, user_id, items, kind="QUICK", focus="UNIT", unit_id=unit.id)

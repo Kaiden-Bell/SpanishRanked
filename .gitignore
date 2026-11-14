@@ -8,3 +8,6 @@ __pycache__/
 .impeccable
 .agents
 .claude
+
+# Personal research notes (not part of the project)
+docs/research/

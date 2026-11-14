@@ -71,11 +71,18 @@ function TermInput({ value, index, keepPhrase, onChange, onKeepPhrase }: {
   )
 }
 
-export default function NewSession({ onSaved }: { onSaved: (award: Award) => void }) {
-  const [mode, setMode] = useState<StudySession['mode']>('SELF_STUDY')
+/** A lesson from the Guided syllabus: the session is tagged with its unit. */
+export type GuidedContext = { unitId: string; n: number; title: string; keyWords: string[] }
+
+export default function NewSession({ onSaved, guided, onCancel }: {
+  onSaved: (award: Award) => void
+  guided?: GuidedContext
+  onCancel?: () => void
+}) {
+  const [mode, setMode] = useState<StudySession['mode']>(guided ? 'GUIDED_STUDY' : 'SELF_STUDY')
   const [activity, setActivity] = useState<string>('READING')
   const [minutes, setMinutes] = useState('20')
-  const [context, setContext] = useState('')
+  const [context, setContext] = useState(guided ? `Guided lesson ${guided.n}: ${guided.title}` : '')
   const [terms, setTerms] = useState<string[]>(Array(MAX_TERMS).fill(''))
   const [sentences, setSentences] = useState<string[]>(Array(MAX_SENTENCES).fill(''))
   const [wordsOnly, setWordsOnly] = useState<boolean[]>(Array(MAX_TERMS).fill(false))
@@ -106,6 +113,7 @@ export default function NewSession({ onSaved }: { onSaved: (award: Award) => voi
         terms: cleanTerms,
         sentences: cleanSentences,
         words_only: terms.filter((t, i) => wordsOnly[i] && t.trim()).map((t) => t.trim()),
+        ...(guided ? { unit_id: guided.unitId } : {}),
       })
       onSaved(saved.award)
     } catch (err) {
@@ -117,21 +125,34 @@ export default function NewSession({ onSaved }: { onSaved: (award: Award) => voi
   return (
     <>
       <header className="page-head">
-        <h1>Log a study session</h1>
-        <p className="lede">Record what you studied, the words you picked up, and a few sentences of your own.</p>
+        {onCancel && <button className="btn ghost back" onClick={onCancel}>← Back to the lesson</button>}
+        <h1>{guided ? 'Log this lesson' : 'Log a study session'}</h1>
+        <p className="lede">
+          {guided
+            ? 'Note the words from this lesson you want to keep, then write two or three sentences of your own that use what it taught.'
+            : 'Record what you studied, the words you picked up, and a few sentences of your own.'}
+        </p>
       </header>
 
       <form className="form" onSubmit={submit}>
-        <div className="field">
-          <span id="mode-label">Mode</span>
-          <div className="seg" role="group" aria-labelledby="mode-label">
-            {MODES.map((m) => (
-              <button type="button" key={m.value} aria-pressed={mode === m.value} onClick={() => setMode(m.value)}>
-                {m.label}
-              </button>
-            ))}
+        {guided ? (
+          guided.keyWords.length > 0 && (
+            <p className="hint">
+              Key words in this unit: <span lang="es">{guided.keyWords.join(', ')}</span>. Logging some of them lets you practise the unit.
+            </p>
+          )
+        ) : (
+          <div className="field">
+            <span id="mode-label">Mode</span>
+            <div className="seg" role="group" aria-labelledby="mode-label">
+              {MODES.map((m) => (
+                <button type="button" key={m.value} aria-pressed={mode === m.value} onClick={() => setMode(m.value)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="row2">
           <label className="field">
@@ -177,7 +198,7 @@ export default function NewSession({ onSaved }: { onSaved: (award: Award) => voi
           </ul>
         )}
         <div className="actions">
-          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save session'}</button>
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Saving…' : guided ? 'Save lesson' : 'Save session'}</button>
         </div>
       </form>
     </>
