@@ -1,10 +1,27 @@
 import type { ReactNode } from 'react'
+import { spanishLine } from './spanishText'
 
 /**
  * The small Markdown subset content packs use: headings, paragraphs, nested lists, tables,
  * blockquotes, rules, **bold**, *italic*, `code`. Builds React elements only (never raw HTML), so
  * text from a user-installed pack cannot inject markup.
+ *
+ * Given `speak`, every paragraph, list item, quote and table cell that reads as Spanish gets a play
+ * button (spanishText.ts decides which, and what is said).
  */
+
+type Speak = (text: string) => void
+
+function Play({ md, speak }: { md: string; speak?: Speak }) {
+  if (!speak) return null
+  const said = spanishLine(md)
+  if (!said) return null
+  return (
+    <button type="button" className="md-play" aria-label={`Hear in Spanish: ${said}`} title="Hear in Spanish" onClick={() => speak(said)}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+    </button>
+  )
+}
 
 type Block =
   | { t: 'h'; level: number; text: string }
@@ -145,18 +162,24 @@ function inline(text: string, key = 'i'): ReactNode[] {
   return out
 }
 
-function List({ items, ordered, start, k }: { items: ListItem[]; ordered: boolean; start: number; k: string }) {
+function List({ items, ordered, start, k, speak }: { items: ListItem[]; ordered: boolean; start: number; k: string; speak?: Speak }) {
   const children = items.map((item, i) => (
     <li key={i}>
       {inline(item.text, `${k}-${i}`)}
-      {item.children && <List {...item.children} k={`${k}-${i}`} />}
+      <Play md={item.text} speak={speak} />
+      {item.children && <List {...item.children} k={`${k}-${i}`} speak={speak} />}
     </li>
   ))
   return ordered ? <ol start={start !== 1 ? start : undefined}>{children}</ol> : <ul>{children}</ul>
 }
 
 /** headingOffset shifts "##" in the source to a lower heading level so it nests under the page's own. */
-export default function Markdown({ source, headingOffset = 1, skipTitle = false }: { source: string; headingOffset?: number; skipTitle?: boolean }) {
+export default function Markdown({ source, headingOffset = 1, skipTitle = false, speak }: {
+  source: string
+  headingOffset?: number
+  skipTitle?: boolean
+  speak?: Speak
+}) {
   let blocks = parse(source)
   if (skipTitle && blocks[0]?.t === 'h' && blocks[0].level === 1) blocks = blocks.slice(1)
   return (
@@ -172,24 +195,24 @@ export default function Markdown({ source, headingOffset = 1, skipTitle = false 
           case 'hr':
             return <hr key={k} />
           case 'quote':
-            return <blockquote key={k}>{inline(b.lines.join('\n'), k)}</blockquote>
+            return <blockquote key={k}>{inline(b.lines.join('\n'), k)}<Play md={b.lines.join(' ')} speak={speak} /></blockquote>
           case 'list':
-            return <List key={k} items={b.items} ordered={b.ordered} start={b.start} k={k} />
+            return <List key={k} items={b.items} ordered={b.ordered} start={b.start} k={k} speak={speak} />
           case 'table': {
             const [head, ...rows] = b.rows
             return (
               <div className="md-table" key={k}>
                 <table>
-                  <thead><tr>{head.map((c, j) => <th key={j}>{inline(c, `${k}h${j}`)}</th>)}</tr></thead>
+                  <thead><tr>{head.map((c, j) => <th key={j}>{inline(c, `${k}h${j}`)}<Play md={c} speak={speak} /></th>)}</tr></thead>
                   <tbody>
-                    {rows.map((r, ri) => <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, `${k}r${ri}c${j}`)}</td>)}</tr>)}
+                    {rows.map((r, ri) => <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, `${k}r${ri}c${j}`)}<Play md={c} speak={speak} /></td>)}</tr>)}
                   </tbody>
                 </table>
               </div>
             )
           }
           default:
-            return <p key={k}>{inline(b.text, k)}</p>
+            return <p key={k}>{inline(b.text, k)}<Play md={b.text.replace(/\n/g, ' ')} speak={speak} /></p>
         }
       })}
     </div>

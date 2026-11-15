@@ -43,6 +43,11 @@ Answers count toward a unit when one of these holds:
 
 That last rule keeps a preterite drill from counting toward "the uses of *se*".
 
+**Hearing a lesson.** Each Spanish line of a lesson gets a ▶ button, and any selected text can be heard with "Hear". This uses the browser's Spanish voice, the same one listening questions use, with the voice and speed chosen in Settings. A browser without one shows a hint instead.
+- Which lines count as Spanish is a heuristic in `src/frontend/spanish-ranked/src/spanishText.ts`: Spanish and English function words, accents, `¿ ¡`, and typical endings.
+- What is said leaves out the speaker label (`**Juana**:`), list numbers, and English glosses in brackets or italics (`la mochila (*backpack*)` says "la mochila").
+- Packs need nothing extra for this. Writing Spanish lines with the gloss in brackets after them, as *¡Chévere!* does, gives the cleanest result.
+
 **Unlocking** is soft. A unit opens once its prerequisites are *started*, not mastered, and a unit the learner is already working on is never locked.
 
 **The suggestion** follows two rules:
@@ -160,4 +165,5 @@ python src/backend/scripts/importers/chevere.py build /tmp/chevere_raw
 - Prompt-then-correct feedback: one retry with a hint before the answer is shown.
 - Detectors for non-tense topics (*ser*/*estar*, *por*/*para*, gender agreement), so self-study can count toward those units.
 - Choosing a preferred pack in Settings. Today the lesson view offers a picker when more than one pack covers a unit.
+- A self-hosted voice (Piper) for browsers with no Spanish voice. It is planned for 1.1; see [ROADMAP.md](ROADMAP.md).
 - Embeddings to match free-text session context to units, using Ollama's `/api/embed`, so the app image stays the same size.

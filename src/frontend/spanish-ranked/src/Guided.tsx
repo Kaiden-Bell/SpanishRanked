@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   api,
   ApiError,
@@ -13,6 +13,8 @@ import {
 import { QuizRunner } from './Assessment'
 import Markdown from './Markdown'
 import NewSession from './NewSession'
+import SelectionSpeak from './SelectionSpeak'
+import { useSpanishVoice } from './speech'
 
 const STATUS_LABEL: Record<UnitStatus, string> = { new: 'Not started', started: 'Started', practicing: 'Practising', solid: 'Solid' }
 /** Matches progress.WEAK on the server: below this a unit is flagged, not merely in progress. */
@@ -109,14 +111,14 @@ function Overview({ data, onOpen }: { data: GuidedOverview; onOpen: (id: string)
   )
 }
 
-function Section({ section, open }: { section: LessonSection; open: boolean }) {
+function Section({ section, open, speak }: { section: LessonSection; open: boolean; speak?: (text: string) => void }) {
   return (
     <details className="card lesson-section" open={open}>
       <summary>
         <span className="cap">{KIND_LABEL[section.kind]}</span>
         <span className="lesson-section-title">{section.title.replace(/^(Gramática|Vocabulario|En contexto|Voces|Cultura)\s*:\s*/, '')}</span>
       </summary>
-      <Markdown source={section.markdown} skipTitle headingOffset={1} />
+      <Markdown source={section.markdown} skipTitle headingOffset={1} speak={speak} />
       {(section.extra_attribution.length > 0 || section.license.code !== 'CC BY 4.0') && (
         <p className="cap lesson-credit">
           This section: {section.license.url ? <a href={section.license.url} target="_blank" rel="noreferrer">{section.license.code}</a> : section.license.code}
@@ -146,6 +148,9 @@ function Unit({ id, onBack, onOpenWord }: {
   const [phase, setPhase] = useState<Phase>({ kind: 'lesson' })
   const [error, setError] = useState<{ message: string; needsLesson?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
+  const voice = useSpanishVoice()
+  const lessonRef = useRef<HTMLDivElement>(null)
+  const speak = voice.available ? (text: string) => voice.speak(text) : undefined
 
   useEffect(() => {
     const controller = new AbortController()
@@ -237,11 +242,18 @@ function Unit({ id, onBack, onOpenWord }: {
               </select>
             </label>
           )}
-          <div className="lesson">
+          {voice.checked && !voice.available && (
+            <p className="meta lesson-voice-hint">
+              This browser has no Spanish voice, so lessons can’t be read aloud here. Installing a Spanish voice in your
+              system settings, or another browser, adds one (see Settings › Spanish voice on this device).
+            </p>
+          )}
+          <div className="lesson" ref={lessonRef}>
             {lesson.sections.map((s, i) => (
-              <Section key={s.path} section={s} open={i < 2 || s.kind === 'grammar'} />
+              <Section key={s.path} section={s} open={i < 2 || s.kind === 'grammar'} speak={speak} />
             ))}
           </div>
+          {speak && <SelectionSpeak within={lessonRef} speak={speak} />}
           {actions}
           <p className="cap lesson-credit">
             From{' '}
