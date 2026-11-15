@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import db
+from app import __version__, db
 from app.config import Settings
 from app.main import create_app
 
@@ -13,7 +13,7 @@ def test_health_reports_schema_version(tmp_path):
     with TestClient(create_app(make_settings(tmp_path))) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "schema_version": len(db.MIGRATIONS)}
+    assert response.json() == {"status": "ok", "version": __version__, "schema_version": len(db.MIGRATIONS)}
 
 
 def test_data_survives_app_recreation(tmp_path):

@@ -2,7 +2,7 @@
 
 A self-hosted Spanish study tracker. Log what you studied, and every word you log goes into a word bank: its meaning, the exact form you met (who and when), its full conjugation table and real example sentences. Then take short quizzes built from your own words, get feedback and XP, and watch your rank and streak. It runs on your machine: no account, no cloud AI, no telemetry. Word meanings and examples are looked up online (see [Online lookups](#online-lookups)).
 
-**Status:** Level 1 MVP done; the Level 2 work is in progress. The word bank is built. See [ROADMAP.md](docs/ROADMAP.md) for what is coming and [MVP_DESIGN.md](docs/MVP_DESIGN.md) for the Level 1 design.
+**Status:** 1.0. [CHANGELOG.md](CHANGELOG.md) says what is in it, and [ROADMAP.md](docs/ROADMAP.md) says what comes next (1.1: a self-hosted Spanish voice). [MVP_DESIGN.md](docs/MVP_DESIGN.md) records the Level 1 design.
 
 ## What you need
 
@@ -29,7 +29,7 @@ If you already run Ollama on the host, skip `--profile ollama` and the `pull`, a
 ## Using it
 
 1. **Start Study Session**: enter the duration, activity, context, 3–5 words or phrases, and 2–3 sentences you wrote.
-1. **Guided** is an optional path of 48 units, from greetings to the subjunctive. Each unit has a short textbook lesson, a form to log it, and a quiz on its words and tenses. Your self-study counts toward it. See [docs/GUIDED_STUDY.md](docs/GUIDED_STUDY.md), including how to add your own textbook as a content pack.
+1. **Guided** is an optional path of 48 units, from greetings to the subjunctive. Each unit has a short textbook lesson, a form to log it, and a quiz on its words and tenses. Your self-study counts toward it. Each Spanish line of a lesson has a ▶ button to hear it in your browser's Spanish voice, and you can select any text and press **Hear**. See [docs/GUIDED_STUDY.md](docs/GUIDED_STUDY.md), including how to add your own textbook as a content pack.
 2. **Words** is your word bank. Search it, open a word to see what the form you met means, its conjugation table, examples and your history with it, and add your own translation. Each term you type in the study form shows a quick lookup as you type.
 3. **History** lists everything you logged. Delete a session logged by mistake: its XP is taken back, and words that only it added leave the word bank. Quiz results stay.
 4. **Quiz** builds five short questions from your word bank, mixing types:
@@ -119,6 +119,13 @@ docker compose cp languageai:/tmp/backup.db ./languageai-backup.db
 
 The bundled guided-study lessons come from *¡Chévere! Introductory Spanish I & II* by Erica Brown, Alejandra Escudero, María Cristina Montoya and Elizabeth Small, © Lumen Learning, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). They were converted to Markdown and excerpted, and images, audio, video and exercises were removed. A few sections adapt CC BY-SA text; see `src/backend/content/packs/chevere/ATTRIBUTION.md`. The lesson content is licensed separately from the code.
 
+## Licence
+
+- **The code** is licensed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version for other people over a network, you must offer them its source.
+- **The bundled lessons** are CC BY 4.0, apart from the CC BY-SA sections listed in their `ATTRIBUTION.md` (see [Lesson content](#lesson-content)).
+- **The verb tables** (`verbs.db`) are generated at build time from [verbecc](https://github.com/bretttolbert/verbecc) (LGPL-3.0). verbecc itself is not shipped in the image.
+- **Looked-up meanings and examples** keep their sources' terms: Wiktionary (CC BY-SA 4.0), Tatoeba (CC BY 2.0 FR) and MyMemory. Each word page credits them.
+
 ## Development
 
 ```bash
@@ -127,11 +134,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cd src/frontend/spanish-ranked && npm ci && npm run dev
 ```
 
-Grading quality is measured with `eval/grading/run_grading_eval.py`; see [eval/grading/README.md](eval/grading/README.md). The post-MVP roadmap is in [docs/LANGUAGE_AI_PRODUCT_ROADMAP.md](docs/LANGUAGE_AI_PRODUCT_ROADMAP.md); smaller ideas live in [docs/backlog-learning.md](docs/backlog-learning.md) and [docs/backlog-scenes.md](docs/backlog-scenes.md).
+Grading quality is measured with `eval/grading/run_grading_eval.py`; see [eval/grading/README.md](eval/grading/README.md). The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md); smaller ideas live in [docs/backlog-learning.md](docs/backlog-learning.md) and [docs/backlog-scenes.md](docs/backlog-scenes.md).
 
-## Known limitations (Level 1)
+## Known limitations
 
-- Grading is not perfectly repeatable: in testing, about 1 answer in 74 was paid XP it should not have been. Rank is an activity rank, not a proficiency claim.
-- Grading is slow on CPU-only hosts (see above).
-- Single owner account only; no editing or deleting study sessions; no quiz history list.
-- Writing shows "Not yet assessed" on the dashboard; per-skill results are planned for Level 2.
+- Free-sentence grading by the model is not perfectly repeatable: in testing, about 1 answer in 74 was paid XP it should not have been. Rank is an activity rank, not a proficiency claim.
+- Grading free sentences is slow on CPU-only hosts (see above). It runs in the background, so you can keep using the app meanwhile.
+- One owner account only. Study sessions can be deleted but not edited.
+- Listening questions and lesson audio need a Spanish voice in your browser. A self-hosted voice is planned for 1.1.
+- Speaking is not assessed: there is no microphone input.

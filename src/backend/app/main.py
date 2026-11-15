@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, progression
+from . import __version__, db, progression
 from .assessment.worker import Grader
 from .clients.grammar import GrammarChecker, LanguageToolClient
 from .clients.model import LanguageModel, OllamaClient
@@ -64,7 +64,7 @@ def create_app(
         app.state.grader.stop()
         app.state.enricher.stop()
 
-    app = FastAPI(title="Language AI", lifespan=lifespan)
+    app = FastAPI(title="Language AI", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.model = model or OllamaClient(settings.ollama_url, settings.model_name, settings.model_timeout)
     app.state.grammar = grammar or LanguageToolClient(settings.languagetool_url, settings.languagetool_timeout)
@@ -93,7 +93,7 @@ def create_app(
     def health():
         try:
             with closing(db.connect(settings.db_path)) as conn:
-                return {"status": "ok", "schema_version": db.schema_version(conn)}
+                return {"status": "ok", "version": __version__, "schema_version": db.schema_version(conn)}
         except sqlite3.Error:
             return JSONResponse({"status": "error"}, status_code=503)
 

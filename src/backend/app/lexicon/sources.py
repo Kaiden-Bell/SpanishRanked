@@ -17,6 +17,8 @@ from urllib.parse import quote
 
 import httpx
 
+from .. import __version__
+
 # Wikimedia rejects library traffic without a policy-style User-Agent: name/version (contact) library.
 # The self-hoster can put their own URL or email in LANGUAGEAI_LOOKUP_CONTACT; nothing personal is
 # sent by default.
@@ -24,7 +26,7 @@ DEFAULT_CONTACT = "+https://www.mediawiki.org/wiki/API:Etiquette"
 
 
 def user_agent(contact: str = "") -> str:
-    return f"LanguageAI/0.2 (self-hosted language study app; {contact.strip() or DEFAULT_CONTACT}) httpx/{httpx.__version__}"
+    return f"LanguageAI/{__version__} (self-hosted language study app; {contact.strip() or DEFAULT_CONTACT}) httpx/{httpx.__version__}"
 WIKTIONARY_URL = "https://en.wiktionary.org/api/rest_v1/page/definition/{word}"
 TATOEBA_URL = "https://api.tatoeba.org/unstable/sentences"
 MYMEMORY_URL = "https://api.mymemory.translated.net/get"
