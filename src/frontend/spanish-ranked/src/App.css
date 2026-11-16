@@ -2140,3 +2140,69 @@ input[type='range']:focus {
     grid-template-columns: 4.6rem 1fr 7.5rem;
   }
 }
+
+/* ---------- lesson audio (browser voice) ---------- */
+
+.lesson-voice-hint {
+  max-width: 50rem;
+}
+
+/* Small inline play button after a Spanish line; the hit area is larger than the icon. */
+.md-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -0.2em;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.3rem 0 -0.3rem 0.35rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.md-play svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  fill: currentColor;
+  margin-left: 0.1rem;
+}
+
+.md-play:hover,
+.md-play:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.md td .md-play,
+.md th .md-play {
+  margin-left: 0.25rem;
+}
+
+.selection-speak {
+  position: fixed;
+  z-index: 40;
+  transform: translateX(-50%);
+  min-height: 36px;
+  padding: 0.5rem 0.9rem;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.selection-speak svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  fill: currentColor;
+}
+
+@media (pointer: coarse) {
+  .md-play {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}

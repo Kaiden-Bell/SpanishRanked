@@ -1,6 +1,6 @@
 # Roadmap: from study log to study tool
 
-> **Status:** Phases 0–5 built (Nov 12, 2026). Provisional numbers (XP, thresholds, cooldown) are marked in `rules.py`.
+> **Status:** Released as **1.0.0** (Nov 15, 2026); see [CHANGELOG.md](../CHANGELOG.md). Phases 0–5 built (Nov 12, 2026). Provisional numbers (XP, thresholds, cooldown) are marked in `rules.py`.
 > **Last updated:** November 12, 2026
 > **Replaces:** `LANGUAGE_AI_PRODUCT_ROADMAP.md` and `LEVEL2_RECAP_REVIEW_PLAN.md`. `MVP_DESIGN.md` remains the record of Level 1.
 
@@ -44,7 +44,7 @@ After a week of daily use, the owner found that the Level 1 app didn't help them
   - The search is stemmed, so `extrañar` also returns `extraño` = "strange".
   - Results are therefore filtered: the sentence must contain a form of the verb, and the English must contain the gloss.
 - **MyMemory** (`api.mymemory.translated.net/get`) translates phrases, which dictionaries don't list. Its output is labelled as machine translation.
-- **Licences.** The repository has no LICENSE file yet, and one must be chosen before release. Attribution for Wiktionary, Tatoeba, MyMemory and verbecc is shown on every word page.
+- **Licences.** The code is AGPL-3.0 (decided for 1.0, Nov 15, 2026). Attribution for Wiktionary, Tatoeba, MyMemory and verbecc is shown on every word page.
 
 ## Phase 1: Word bank (built)
 
@@ -199,7 +199,7 @@ An optional, research-ordered path: 48 units in four stages. Each pairs a lesson
 ## Not built yet
 
 - Speaking, with no microphone input. Speaking stays "Not yet assessed".
-- Server-side text-to-speech, for browsers with no Spanish voice. Piper is a candidate.
+- Server-side text-to-speech: planned for 1.1, see below.
 - Editing study sessions.
 - Picking the reading (verb vs noun) of an ambiguous single word from the Words page.
 
@@ -245,3 +245,23 @@ Deleting and then logging the same session again can't earn its XP twice. The en
 **Themes.** One per rank, each a palette plus the banner scene it is named after (`app/themes.py`, tokens in `index.css`).
 - A theme is unlocked by the held rank (boss passed or grandfathered).
 - The server refuses a locked theme and falls back to the default if the rank is lost (Reset all data).
+
+## Lesson audio (built for 1.0, Nov 15, 2026)
+
+Each Spanish line of a guided lesson (dialogue, vocabulary, table cells, examples) has a ▶ button, and any selected text can be heard with "Hear". It uses the browser voice from `speech.ts`, the one listening questions use. Lessons mix English and Spanish, so `spanishText.ts` decides which lines are Spanish and strips speaker labels and English glosses before speaking. The decision is a heuristic, tuned on all 172 sections of the bundled pack.
+
+## Next: 1.1, a self-hosted Spanish voice
+
+For browsers with no Spanish voice. It would serve both lessons and listening questions.
+
+- **Engine.** [Piper](https://github.com/OHF-Voice/piper1-gpl) runs in an optional `piper` compose profile, as its own container like Ollama. The engine is GPL-3.0, and the old MIT `rhasspy/piper` repo is archived.
+- **Voice.** `es_ES-davefx-medium` (CC0, about 60 MB). The other Spanish voices on file:
+  - `es_MX-ald-medium` (Unlicense)
+  - `es_MX-claude-high` (Apache-2.0)
+  - `es_ES-sharvard-medium` (CC BY 3.0)
+  - `es_AR-daniela-high` (CC BY-SA 4.0)
+- **Backend.**
+  - Add `LANGUAGEAI_TTS_URL`.
+  - Add `GET /api/tts?text=…`, signed-in only and length-capped. It caches the audio under `<data dir>/tts/`, keyed by a hash of the voice and text.
+  - It returns 503 when Piper is down, so the app degrades the way it does without the model.
+- **Frontend.** `speech.ts` gains a server source, used when the browser has no Spanish voice or when the learner picks it in Settings. With it, listening questions work in every browser.

@@ -29,7 +29,7 @@ services:
 
   # Advisory grammar checker. Internal network only: no ports are published.
   languagetool:
-    image: erikvl87/languagetool
+    image: erikvl87/languagetool:6.8
     environment:
       # LanguageTool's own default is 8010 in this image.
       Java_Xms: 256m
@@ -40,7 +40,7 @@ services:
   # Skip the profile if Ollama already runs on the host and set LANGUAGEAI_OLLAMA_URL instead.
   # First time only: `docker compose exec ollama ollama pull qwen2.5:7b` (about 4.7 GB, kept in the volume).
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:0.40.14
     profiles: ["ollama"]
     volumes:
       - ollama-models:/root/.ollama
